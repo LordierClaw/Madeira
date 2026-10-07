@@ -60,6 +60,13 @@ trackpad gestures. `tests/host/check-trackpad.py` replays the production handler
 with simulated touch lifetimes. Device verification of this correction is pending;
 it does not establish the cause of every game stop or the separate slow loading.
 
+The user reports that the picture itself freezes. The same log still advances
+the GL present counter after the unreleased drag. That counter records submitted
+Metal command buffers, not changing image contents or completed GPU work, so it
+does not rule out the reported visual freeze. No speculative renderer change is
+included. The drag regression, existing input queue checks and iOS native build
+passed for `03baa7c`; confirming the complete symptom still requires a device run.
+
 **Not fixed:** controller behavior in Darkest Dungeon and minor voice-audio
 crackle. The device probe did receive controller buttons, axes and a trigger
 through XInput 1.4, 1.3 and 9.1.0. The player slot was absent at startup and first
@@ -75,9 +82,9 @@ do **not** contain these new source changes; build outputs are local only.
 The Windows troubleshooting IPAs were made by replacing the rebuilt Wine DLL
 and applying a tested native queue overlay to the c-gow release. The fork now
 has a successful
-[native Debug app build](https://github.com/LordierClaw/Madeira/actions/runs/37647743698)
-from commit `6dba36c`, including corrected DLC transfer estimates, landscape
-only during play, native input queues and the rebuilt
+[native Debug app build](https://github.com/LordierClaw/Madeira/actions/runs/37663379693)
+from commit `03baa7c`, including trackpad drag release, corrected DLC transfer
+estimates, landscape only during play, native input queues and the rebuilt
 Wine loader. Its local IPA packaging reuses the explicitly supplied OpenGL
 plugins, i386 farm and VC runtimes; other inherited PE modules are not all
 rebuilt. This is distinct from a complete rebuild of every shipped component.
