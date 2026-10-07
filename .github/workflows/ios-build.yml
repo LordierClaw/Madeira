@@ -132,9 +132,67 @@ jobs:
             build/**/*.log
             wine/build-macos/config.log
           retention-days: 7
+  dxmt:
+    needs: [llvm]
+    if: always() && (needs.llvm.result == 'success' || inputs.llvm_run != '')
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Prepare output directory
+        run: mkdir -p outputs
+      - name: Check reused compiler recipe
+        if: inputs.llvm_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LLVM_RUN: ${{ inputs.llvm_run }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LLVM_RUN" --jq .head_sha)
+          gh api "repos/$GITHUB_REPOSITORY/contents/build/ci/llvm-ios.sh?ref=$sha" -H 'Accept: application/vnd.github.raw+json' > outputs/previous-llvm-ios.sh
+          cmp build/ci/llvm-ios.sh outputs/previous-llvm-ios.sh
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: llvm-ios
+          path: outputs/dependencies
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.llvm_run || github.run_id }}
+      - name: Restore compiler and identify shader source
+        id: library-pins
+        run: |
+          tar -xzf outputs/dependencies/llvm-ios.tar.gz
+          echo "dxmt=$(git rev-parse HEAD:dxmt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: dxmt-cache
+        with:
+          path: app/Madeira/libdxmt_combined.a
+          key: dxmt-xcode26.3-v1-${{ steps.library-pins.outputs.dxmt }}-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
+      - name: DXMT for iOS
+        if: steps.dxmt-cache.outputs.cache-hit != 'true'
+        run: bash build/ci/app-ios.sh dxmt
+      - name: Cache completed DXMT library
+        if: steps.dxmt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          key: ${{ steps.dxmt-cache.outputs.cache-primary-key }}
+          path: app/Madeira/libdxmt_combined.a
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dxmt-ios
+          path: app/Madeira/libdxmt_combined.a
+          retention-days: 7
+          compression-level: 0
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dxmt-build-logs
+          path: build/dxmt-ios/obj/*.err
+          retention-days: 7
   app:
-    needs: [llvm, runtime]
-    if: always() && (needs.runtime.result == 'success' || inputs.native_run != '') && (needs.llvm.result == 'success' || inputs.llvm_run != '')
+    needs: [dxmt, runtime]
+    if: always() && (needs.runtime.result == 'success' || inputs.native_run != '') && needs.dxmt.result == 'success'
     # The bundled StikJIT module uses Swift 6.4's qualified-name syntax.
     # Keep the native dependencies on their verified 26.3 toolchain; Swift and
     # the final linker need Xcode 27 to consume that framework's interface.
@@ -161,42 +219,14 @@ jobs:
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN" --jq .head_sha)
           git fetch --depth=1 origin "$sha"
           git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/ci/fex-native-diagnostics.h build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/madeira-dock build/madeira_cfg.h
-      - name: Check reused compiler recipe
-        if: inputs.llvm_run != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          LLVM_RUN: ${{ inputs.llvm_run }}
-        run: |
-          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LLVM_RUN" --jq .head_sha)
-          gh api "repos/$GITHUB_REPOSITORY/contents/build/ci/llvm-ios.sh?ref=$sha" -H 'Accept: application/vnd.github.raw+json' > outputs/previous-llvm-ios.sh
-          cmp build/ci/llvm-ios.sh outputs/previous-llvm-ios.sh
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: llvm-ios
-          path: outputs/dependencies
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.llvm_run || github.run_id }}
       - name: Restore libraries
-        id: library-pins
         run: |
           git submodule update --init --depth 1 FEX
-          tar -xzf outputs/dependencies/llvm-ios.tar.gz
           tar -xzf outputs/dependencies/native-ios.tar.gz
-          echo "dxmt=$(git rev-parse HEAD:dxmt)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: dxmt-cache
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: app/Madeira/libdxmt_combined.a
-          key: dxmt-xcode27.0-v1-${{ steps.library-pins.outputs.dxmt }}-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
-      - name: DXMT for iOS
-        if: steps.dxmt-cache.outputs.cache-hit != 'true'
-        run: bash build/ci/app-ios.sh dxmt
-      - name: Cache completed DXMT library
-        if: steps.dxmt-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          key: ${{ steps.dxmt-cache.outputs.cache-primary-key }}
-          path: app/Madeira/libdxmt_combined.a
+          name: dxmt-ios
+          path: app/Madeira
       - name: Build application and JIT helper
         run: bash build/ci/app-ios.sh app
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
