@@ -13,7 +13,7 @@ fex)
     # Linux conformance binary repositories are not needed for FEXCore on iOS.
     git -C FEX submodule update --init --recursive --depth 1 \
         $(git config -f FEX/.gitmodules --get-regexp path | awk '{print $2}' | grep -vE '(tests-bins|posixtest-bins)')
-    cmake -S FEX -B FEX/build-ios -DCMAKE_SYSTEM_NAME=iOS \
+    cmake -S FEX -B FEX/build-ios -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR=arm64 \
         -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_SYSROOT=iphoneos \
         -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

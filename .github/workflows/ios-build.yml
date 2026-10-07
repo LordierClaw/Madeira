@@ -4,6 +4,11 @@ on:
     branches: [ui-ux]
     paths: ['.github/workflows/ios-build.yml', 'build/ci/**']
   workflow_dispatch:
+    inputs:
+      llvm_run:
+        description: 'Reuse LLVM artifact from this run (same LLVM build recipe required)'
+        required: false
+        type: string
 permissions:
   contents: read
 env:
@@ -11,6 +16,7 @@ env:
   HOMEBREW_NO_AUTO_UPDATE: '1'
 jobs:
   llvm:
+    if: inputs.llvm_run == ''
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -40,7 +46,8 @@ jobs:
           persist-credentials: false
       - name: Build tools
         run: brew install ccache bison autoconf automake libtool pkgconf
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: native-cache
         with:
           path: |
             FEX/build-ios
@@ -52,11 +59,26 @@ jobs:
             research/freetype
             build/rppairing-ios/target
             ~/.cargo/registry
-          key: native-deps-xcode26.3-v1-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}
+          key: native-deps-xcode26.3-fex26859e1-v1-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}
       - name: FEX for iOS
         run: bash build/ci/runtime-ios.sh fex
       - name: Crypto, media, fonts and pairing
         run: bash build/ci/runtime-ios.sh media
+      - name: Cache compiled dependencies before Wine
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+          path: |
+            FEX/build-ios
+            toolchains/gnutls-ios
+            toolchains/ffmpeg-ios
+            build/gnutls-ios/obj
+            build/ffmpeg/obj
+            build/freetype-ios/build
+            research/freetype
+            build/rppairing-ios/target
+            ~/.cargo/registry
       - name: Wine and Dock
         run: bash build/ci/runtime-ios.sh wine
       - name: Bundle native libraries
@@ -80,6 +102,7 @@ jobs:
           retention-days: 7
   app:
     needs: [llvm, runtime]
+    if: always() && needs.runtime.result == 'success' && (needs.llvm.result == 'success' || inputs.llvm_run != '')
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -88,9 +111,23 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: '*-ios'
-          merge-multiple: true
+          name: native-ios
           path: outputs/dependencies
+      - name: Check reused compiler recipe
+        if: inputs.llvm_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LLVM_RUN: ${{ inputs.llvm_run }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LLVM_RUN" --jq .head_sha)
+          gh api "repos/$GITHUB_REPOSITORY/contents/build/ci/llvm-ios.sh?ref=$sha" -H 'Accept: application/vnd.github.raw+json' > outputs/previous-llvm-ios.sh
+          cmp build/ci/llvm-ios.sh outputs/previous-llvm-ios.sh
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: llvm-ios
+          path: outputs/dependencies
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.llvm_run || github.run_id }}
       - name: Restore libraries
         run: |
           tar -xzf outputs/dependencies/llvm-ios.tar.gz
