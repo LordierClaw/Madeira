@@ -95,6 +95,16 @@ checks below remain necessary.
 
 ## Validation
 
+[Follow-up regression checks passed for `6dba36c`](https://github.com/LordierClaw/Madeira/actions/runs/37647743607):
+two missing DLC over an existing base/shared install report exactly the CDN
+payload and preserve both add-ons' contents; fully cached reinstalls report
+zero transfer. Rolling-rate, idle-timer, ETA, interruption/resume and update
+fixtures also pass under AddressSanitizer. Simulated scenes exercise the actual
+orientation policy for idle, Play, exit/failure, mid-session toggles, prior
+orientation, a background exit and stale callbacks. UIKit SDK typechecking and
+cloud policy fixtures pass. Simulation does not validate physical portrait lock.
+
+
 [CI passed for code commit `4acdc67`](https://github.com/LordierClaw/Madeira/actions/runs/37572179370)
 on 2026-10-07: Linux download fixtures with AddressSanitizer, macOS cloud
 fixtures, Swift syntax checks, and the iOS SDK typecheck described below.
@@ -106,8 +116,8 @@ typecheck checks the production changed views, model methods and orientation
 code with unrelated runtime services stubbed. CI does not contact Steam or
 include vendor runtimes, credentials, game data or device logs.
 
-[The full native Debug app and JIT helper now build and link](https://github.com/LordierClaw/Madeira/actions/runs/37581572994)
-from `dbcd1ce`. Local IPA packaging preserves the new native code and rebuilt
+[The updated native Debug app and JIT helper build and link](https://github.com/LordierClaw/Madeira/actions/runs/37647743698)
+from `6dba36c`. Local IPA packaging preserves the new native code and rebuilt
 DataFix loader while adding separately supplied compatibility resources; see
 [BUILDING.md](BUILDING.md). iPhone checks remain required: owned DLC in-game,
 resume after termination, cloud upload/backup with real saves, and landscape

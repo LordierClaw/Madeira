@@ -13,6 +13,17 @@ The final package retained `get-task-allow`, `allow-jit` and the increased-memor
 entitlement. ZIP/member hashes, the new UI/input markers and rebuilt DataFix
 loader checks passed. iPhone execution has not been verified for this build.
 
+The follow-up [native build for `6dba36c`](https://github.com/LordierClaw/Madeira/actions/runs/37647743698)
+adds corrected DLC transfer estimates and landscape only during play.
+`Madeira-0.1.3-ProgressFix-LandscapePlaying.ipa` is version 0.1.3, build 15,
+154,177,219 bytes, SHA-256
+`ea085bfdee6180e3c4f721803f08909dd6e3b44536cb017c6022d43475922fa5`.
+Local package integrity, new native code/UI markers and JIT entitlements were
+verified. The DataFix loader is byte-identical to build 14. Native runtime and
+LLVM inputs are unchanged; [regression checks](https://github.com/LordierClaw/Madeira/actions/runs/37647743607)
+passed, including combined DLC transfers and orientation transitions. Physical
+iPhone validation of this follow-up is pending.
+
 The maintained `ui-ux` branch uses `.github/workflows/ios-build.yml` and
 `build/ci/*.sh`. The original September build notes below are a historical
 record, not the current fork's submodule availability status. All pinned

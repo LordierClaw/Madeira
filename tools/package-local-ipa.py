@@ -120,6 +120,7 @@ def main():
         app_code = result.read(PREFIX + 'Madeira.debug.dylib')
         assert expected['Madeira.debug.dylib'] == native_hashes['Madeira.debug.dylib']
         for text in (b'Always keep local', b'Download all missing DLC', b'Always use landscape when playing',
+                     b'Checking existing files', b'Waiting for data',
                      b'MADEIRA_CLICK_HOLD_MS', b'MADEIRA_KEY_HOLD_MS'):
             assert text in app_code, 'New UI missing from native code: ' + repr(text)
         loader = result.read(PREFIX + 'arm64ec-windows/ntdll.dll')
