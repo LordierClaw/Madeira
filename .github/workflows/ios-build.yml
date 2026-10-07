@@ -154,6 +154,7 @@ jobs:
           run-id: ${{ inputs.llvm_run || github.run_id }}
       - name: Restore libraries
         run: |
+          git submodule update --init --depth 1 FEX
           tar -xzf outputs/dependencies/llvm-ios.tar.gz
           tar -xzf outputs/dependencies/native-ios.tar.gz
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

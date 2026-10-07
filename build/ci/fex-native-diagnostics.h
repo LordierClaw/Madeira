@@ -10,7 +10,28 @@
  */
 #pragma once
 #if defined(__APPLE__) && defined(__cplusplus) && !defined(FEX_IOS_HOST)
+#include <stddef.h>
 #include <stdint.h>
 [[maybe_unused]] static constexpr uint64_t IosFfsBypassLog[4] = {};
 [[maybe_unused]] static constexpr uint64_t IosCbEntryLog[8] = {};
+
+/* Arm64.cpp also queries Windows memory attributes solely for its unsupported
+ * CASPAL diagnostic. A Mach-O library has no Windows address-space query. The
+ * failed query leaves the existing log's type="?"; it does not change atomic
+ * emulation, permission checks, or the caller's unsupported-instruction result.
+ * This is only the report's field set, not a structure passed across a Wine ABI.
+ */
+using LPCVOID = const void*;
+struct MEMORY_BASIC_INFORMATION {
+    void* BaseAddress;
+    size_t RegionSize;
+    uint32_t Protect;
+    uint32_t Type;
+    uint32_t State;
+};
+[[maybe_unused]] static constexpr uint32_t MEM_IMAGE = 0x1000000;
+[[maybe_unused]] static constexpr uint32_t MEM_MAPPED = 0x40000;
+[[maybe_unused]] static inline size_t VirtualQuery(LPCVOID, MEMORY_BASIC_INFORMATION*, size_t) {
+    return 0;
+}
 #endif
