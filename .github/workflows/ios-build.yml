@@ -172,18 +172,26 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.llvm_run || github.run_id }}
       - name: Restore libraries
+        id: library-pins
         run: |
           git submodule update --init --depth 1 FEX
           tar -xzf outputs/dependencies/llvm-ios.tar.gz
           tar -xzf outputs/dependencies/native-ios.tar.gz
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+          echo "dxmt=$(git rev-parse HEAD:dxmt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: dxmt-cache
         with:
           path: app/Madeira/libdxmt_combined.a
-          key: dxmt-xcode26.3-v1-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
+          key: dxmt-xcode26.3-v1-${{ steps.library-pins.outputs.dxmt }}-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
       - name: DXMT for iOS
         if: steps.dxmt-cache.outputs.cache-hit != 'true'
         run: bash build/ci/app-ios.sh dxmt
+      - name: Cache completed DXMT library
+        if: steps.dxmt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          key: ${{ steps.dxmt-cache.outputs.cache-primary-key }}
+          path: app/Madeira/libdxmt_combined.a
       - name: Build application and JIT helper
         run: bash build/ci/app-ios.sh app
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

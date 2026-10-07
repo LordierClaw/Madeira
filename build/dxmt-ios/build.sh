@@ -17,6 +17,16 @@ OUT_LIB="$BUILD_DIR/libdxmt_unix.a"
 
 mkdir -p "$OBJ_DIR"
 
+# Meson generates these AIR bitcode arrays before compiling airconv_context.
+# A clean native-only build must perform the same steps; they are not tracked.
+DXMT_METAL_STD="${DXMT_METAL_STD:-metal3.1}"
+mkdir -p "$BUILD_DIR/shader-headers"
+for shader in air_msad air_samplepos air_tessellation; do
+    xcrun -sdk macosx metal -std="$DXMT_METAL_STD" --target=air64-apple-macos14.0 \
+        -o "$BUILD_DIR/shader-headers/$shader.air" -c "$DXMT_SRC/airconv/shaders/$shader.metal"
+    xxd -n "$shader" -i "$BUILD_DIR/shader-headers/$shader.air" "$BUILD_DIR/shader-headers/$shader.h"
+done
+
 COMMON_FLAGS="-arch arm64 -isysroot $SDK -miphoneos-version-min=18.0 -fblocks -O2"
 INCLUDES="-I$DXMT_ROOT/include -I$DXMT_ROOT/libs -I$DXMT_SRC/winemetal -I$DXMT_SRC/airconv"
 INCLUDES_DIRECTX="-I$DXMT_ROOT/include/native/directx -I$DXMT_ROOT/include/native/windows"
@@ -215,7 +225,6 @@ echo "=== MADEIRA: dxmt_madeira_native -- internal command library ==="
 # DXMT's meson build (the container format must also be one the OS reads). The
 # script's own timestamp is part of
 # the cache check so that a flag change here regenerates the header.
-DXMT_METAL_STD="${DXMT_METAL_STD:-metal3.1}"
 if [ ! -f "$BUILD_DIR/shader-headers/dxmt_command.h" ] \
    || [ "$DXMT_SRC/dxmt/dxmt_command.metal" -nt "$BUILD_DIR/shader-headers/dxmt_command.h" ] \
    || [ "$0" -nt "$BUILD_DIR/shader-headers/dxmt_command.h" ]; then
