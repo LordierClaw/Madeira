@@ -1,0 +1,4 @@
+LIBRARY msvcp140.dll
+EXPORTS
+"?_Init_cnt@Init@ios_base@std@@0HA" DATA
+"?cout@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A" DATA
