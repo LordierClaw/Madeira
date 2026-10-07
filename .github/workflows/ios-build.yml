@@ -54,6 +54,8 @@ jobs:
           persist-credentials: false
       - name: Build tools
         run: brew install ccache bison autoconf automake libtool pkgconf
+      - name: Initialize FEX before restoring its build directory
+        run: git submodule update --init --depth 1 FEX
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: native-cache
         with:
@@ -134,7 +136,7 @@ jobs:
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN" --jq .head_sha)
           git fetch --depth=1 origin "$sha"
-          git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/madeira-dock build/madeira_cfg.h
+          git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/ci/fex-native-diagnostics.h build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/madeira-dock build/madeira_cfg.h
       - name: Check reused compiler recipe
         if: inputs.llvm_run != ''
         env:

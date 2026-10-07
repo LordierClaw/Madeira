@@ -74,7 +74,7 @@ PY
     ;;
 pack)
     # Preserve generated headers and library paths, not intermediate object files.
-    find FEX/build-ios -type f \( -name '*.a' -o -name '*.h' -o -name '*.inc' \) > outputs/native-files.txt
+    find FEX/build-ios -type f \( -name '*.a' -o -name '*.h' -o -name '*.inc' -o -name '*.inl' \) > outputs/native-files.txt
     find app/Madeira -maxdepth 1 -name '*.a' >> outputs/native-files.txt
     printf '%s\n' app/Madeira/legal/LICENSES-rppairing-crates.txt \
         app/Madeira/arm64ec-windows/ntdll.dll app/Madeira/arm64ec-windows/opengl32.dll \
