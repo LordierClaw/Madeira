@@ -33,9 +33,28 @@ jobs:
         with:
           path: outputs/llvm-ios.tar.gz
           key: llvm-ios-xcode26.3-${{ hashFiles('build/ci/llvm-ios.sh') }}
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        with:
+          key: llvm-progress-xcode26.3-8dfdcc7b7-${{ github.run_id }}
+          restore-keys: llvm-progress-xcode26.3-8dfdcc7b7-
+          path: |
+            toolchains/llvm-project
+            toolchains/llvm-host-build
+            toolchains/llvm-ios-build
       - name: LLVM for iOS
         if: steps.llvm-cache.outputs.cache-hit != 'true'
+        id: llvm-build
         run: bash build/ci/llvm-ios.sh
+      - name: Preserve compiler build progress after failure
+        if: failure() && steps.llvm-build.conclusion == 'failure'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          key: llvm-progress-xcode26.3-8dfdcc7b7-${{ github.run_id }}
+          path: |
+            toolchains/llvm-project
+            toolchains/llvm-host-build
+            toolchains/llvm-ios-build
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: llvm-ios

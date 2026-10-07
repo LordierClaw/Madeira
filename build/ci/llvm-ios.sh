@@ -31,8 +31,11 @@ cmake -G Ninja -S toolchains/llvm-project/llvm -B toolchains/llvm-ios-build \
     -DLLVM_DEFAULT_TARGET_TRIPLE=arm64-apple-ios17.0 -DLLVM_TARGET_ARCH=host \
     -DLLVM_TARGETS_TO_BUILD= -DLLVM_ENABLE_PROJECTS= -DLLVM_BUILD_TOOLS=OFF \
     -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_ENABLE_ZLIB=OFF \
-    -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF \
+    -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_TERMINFO=OFF \
     -DLLVM_TABLEGEN="$ROOT/toolchains/llvm-host-build/bin/llvm-tblgen"
-cmake --build toolchains/llvm-ios-build --parallel 3
+# DXMT consumes the IR/pass archives. LLVM's default 'all' target also builds
+# host-style dynamic tools (libLTO, opt-fuzzer, examples) with ELF linker flags,
+# even with LLVM_BUILD_TOOLS=OFF. They cannot run on iOS and are not app inputs.
+cmake --build toolchains/llvm-ios-build --target LLVMPasses LLVMBitReader LLVMBitWriter LLVMIRReader --parallel 3
 tar -czf outputs/llvm-ios.tar.gz toolchains/llvm-project/llvm/include \
     toolchains/llvm-ios-build/include toolchains/llvm-ios-build/lib
