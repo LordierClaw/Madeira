@@ -1,3 +1,9 @@
 app/Frameworks/StikJIT.xcframework/** -whitespace
 # Patch context lines deliberately contain a single space.
 *.patch -whitespace
+# Source/build scripts must stay usable from Windows and POSIX checkouts.
+*.patch text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+.githooks/* text eol=lf
+.gitmodules text eol=lf

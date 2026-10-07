@@ -13,6 +13,12 @@
 Madeira runs Windows PC games on an iPhone, with no jailbreak. Games run as they
 are, unmodified, inside a single iOS app.
 
+> **LordierClaw fork:** ongoing work uses the `madeira-fixes` branch and our
+> [Wine source fork](https://github.com/LordierClaw/Madeira-wine). See
+> [fork changes, validation status and build instructions](docs/FORK.md).
+> New commits contain source only; Microsoft runtimes and built IPAs/DLLs are
+> supplied or generated locally. Inherited binaries must be rebuilt for our fixes.
+
 > [!NOTE]
 > Madeira is an active research project. Many games start and some play well,
 > but performance and compatibility vary from game to game, and things change

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+if command -v python >/dev/null 2>&1; then
+    exec python tools/check-source-commit.py --staged
+fi
+exec python3 tools/check-source-commit.py --staged

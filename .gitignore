@@ -147,6 +147,33 @@ tests/x64/asmconf_obj/
 # redistributable terms and only unmodified. Not ours to ship -- obtain them
 # yourself, see tools/fetch-vcruntime.md.
 app/Madeira/x86_64-vcruntime/*.dll
+# Fork policy: keep newly built/vendor binaries and private device data local.
+# Existing upstream tracked artifacts are unchanged by these ignore rules.
+*.dll
+*.exe
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.pdb
+*.ipa
+*.p12
+*.pfx
+*.mobileprovision
+__pycache__/
+*.pyc
+outputs/
+work/
+tests/input/out/
+madeira-log*.txt
+madeira-input-probe*.txt
+madeira-data-probe*.txt
+madeira.cfg
+madeira-library.json
+madeira-controls.json
+madeira-control-presets.json
+pairing*.plist
 research/remote-metal/host/rmetald
 research/remote-metal/guest/rmtest
 
