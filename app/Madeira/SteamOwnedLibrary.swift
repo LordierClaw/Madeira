@@ -1107,6 +1107,7 @@ final class SteamOwnedLibrary: ObservableObject {
         guard active == nil, !inSession, !queue.isEmpty else { return }
         let appID = queue.removeFirst()
         downloads[appID]?.state = .active
+        downloads[appID]?.progress = SteamDownloadProgress()
         SteamDownloadBackground.shared.downloadStarted(appID: appID, name: game(appID)?.name ?? "Steam game")
         let task = Task { @MainActor [weak self] in
             guard let self else { return }

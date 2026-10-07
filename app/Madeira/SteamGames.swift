@@ -818,7 +818,11 @@ struct SteamDownloadStatus: View {
     let download: SteamOwnedLibrary.Download
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ProgressView(value: download.progress.fraction)
+            if download.state == .active && (download.progress.phase == .preparing || download.progress.phase == .finishing) {
+                ProgressView()
+            } else {
+                ProgressView(value: download.progress.fraction)
+            }
             Text(caption).font(.caption).foregroundStyle(.secondary).monospacedDigit()
         }
     }
@@ -830,15 +834,22 @@ struct SteamDownloadStatus: View {
         case .failed(let message): return message
         case .active:
             switch p.phase {
-            case .preparing: return "Preparing download…"
+            case .preparing:
+                if p.totalDepots > 0 && p.preparedDepots == p.totalDepots { return "Preparing files…" }
+                return p.totalDepots > 0 ? "Preparing download… \(p.preparedDepots)/\(p.totalDepots)" : "Preparing download…"
+            case .checking: return "Checking existing files… \(Int(p.fraction * 100))%"
             case .finishing: return "Finishing…"
             case .downloading:
                 var parts = ["\(Int(p.fraction * 100))%", "\(formatBytes(Int64(p.doneBytes))) of \(formatBytes(Int64(p.totalBytes)))"]
                 if p.bytesPerSecond > 0 {
                     parts.append("\(formatBytes(Int64(p.bytesPerSecond)))/s")
-                    let left = Double(p.totalBytes - min(p.doneBytes, p.totalBytes)) / p.bytesPerSecond
-                    if left.isFinite, left > 60 { parts.append("about \(Int(left / 60) + 1) min left") }
+                    if let left = p.secondsRemaining {
+                        parts.append(left < 60 ? "less than a minute left" : "about \(Int(ceil(left / 60))) min left")
+                    }
+                } else if p.doneBytes < p.totalBytes {
+                    parts.append("Waiting for data…")
                 }
+                if p.reusedBytes > 0 { parts.append("\(formatBytes(Int64(clamping: p.reusedBytes))) already on disk") }
                 return parts.joined(separator: " · ")
             }
         }

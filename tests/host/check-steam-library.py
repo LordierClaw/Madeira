@@ -935,6 +935,28 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
 
     // Compile and exercise the production preflight with case-insensitive DLC
     // collisions. Neither an existing file nor a resume journal may change.
+    var rate = SteamDownloadRate(startedAt: 100)
+    rate.record(1000, at: 100.5)
+    require(rate.bytesPerSecond(at: 100.5) == 0, "do not estimate from a sub-second startup sample")
+    require(rate.bytesPerSecond(at: 101) == 1000, "speed counts only recorded transfer payload")
+    for second in 2...6 { rate.record(100, at: 100 + Double(second)) }
+    require(rate.bytesPerSecond(at: 106) == 100, "old fast traffic expires within the five-second window")
+    require(rate.bytesPerSecond(at: 111) == 0, "stalled transfers expire speed without a new completed chunk")
+    rate.record(250, at: 112)
+    require(rate.bytesPerSecond(at: 112) == 50, "resumed traffic excludes the expired burst")
+    var eta = SteamDownloadProgress(phase: .downloading, totalBytes: 1000, doneBytes: 500, bytesPerSecond: 100)
+    require(eta.secondsRemaining == 5, "ETA uses the remaining network bytes and current rate")
+    eta.bytesPerSecond = 0
+    require(eta.secondsRemaining == nil, "a stalled connection has no stale ETA")
+
+    var idleUpdates: [SteamDownloadProgress] = []
+    let reporting = SteamTransferProgress(total: 1000, reused: 9000) { idleUpdates.append($0) }
+    reporting.completed(100)
+    try await Task.sleep(nanoseconds: 1_250_000_000)
+    reporting.stop()
+    require(idleUpdates.count >= 3 && idleUpdates.last!.doneBytes == 100 && idleUpdates.last!.bytesPerSecond > 0,
+            "progress keeps reporting and updating the rate while no further chunks complete")
+
     let sentinel = records.appendingPathComponent("data.bin")
     try Data("keep me".utf8).write(to: sentinel)
     func collisionPlan(_ id: UInt32, _ name: String) -> DepotDownloader.DepotPlan {
@@ -990,9 +1012,10 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     let downloader = DepotDownloader(session: session)
     downloader.contentHosts = { _ in hosts }
     var lastProgress = SteamDownloadProgress()
+    var updates: [SteamDownloadProgress] = []
     let licensed: Set<UInt32> = phase == "dlc-refused" ? [9003] : (phase == "refused-licensed" ? [9001, 9003, 9004] : [9001, 9003])
     do {
-        _ = try await downloader.install(app, steamApps: steamApps, ownedDepots: { licensed }) { lastProgress = $0 }
+        _ = try await downloader.install(app, steamApps: steamApps, ownedDepots: { licensed }) { lastProgress = $0; updates.append($0) }
         require(phase != "dlc-refused", "a selected DLC refusal cannot silently complete the base game")
         print("RESULT install=ok")
     } catch {
@@ -1012,7 +1035,16 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     }
     print("RESULT listed=\(found.filter { $0.id == 9000 && $0.installed }.count)")
     if phase != "interrupt" && phase != "refused-licensed" {
-        require(lastProgress.phase == .finishing && lastProgress.doneBytes == lastProgress.totalBytes && lastProgress.totalBytes > 0, "progress ends complete: \(lastProgress.doneBytes)/\(lastProgress.totalBytes)")
+        require(lastProgress.phase == .finishing && lastProgress.doneBytes == lastProgress.totalBytes, "progress ends complete: \(lastProgress.doneBytes)/\(lastProgress.totalBytes)")
+        require(updates.contains { $0.phase == .checking }, "disk verification is its own visible phase")
+        let transfers = updates.filter { $0.phase == .downloading }
+        require(transfers.first?.doneBytes == 0 && transfers.first?.bytesPerSecond == 0,
+                "each transfer starts at zero; local content cannot produce a speed spike")
+        require(Set(transfers.map(\.totalBytes)).count == 1, "network denominator stays fixed across all depots")
+        require(updates.filter { $0.phase != .downloading }.allSatisfy { $0.bytesPerSecond == 0 && $0.secondsRemaining == nil },
+                "preparation, disk verification and finishing never show network speed or ETA")
+        require(zip(transfers, transfers.dropFirst()).allSatisfy { pair in pair.0.doneBytes <= pair.1.doneBytes }, "network progress is monotonic")
+        print("RESULT networkBytes=\(lastProgress.totalBytes) reusedBytes=\(lastProgress.reusedBytes)")
         // Keys are asked for with the app being installed; manifest codes and tokens with the app that owns the content.
         require(session.keyRequests.contains { $0.depot == 9001 && $0.app == 9000 } && session.keyRequests.contains { $0.depot == 9003 && $0.app == 9000 }, "depot keys are requested for the installed app")
         require(session.codeRequests.contains { $0.depot == 9003 && $0.app == 9100 } && session.codeRequests.contains { $0.depot == 9001 && $0.app == 9000 }, "manifest codes are requested for the app that owns the depot")
@@ -1081,6 +1113,7 @@ assert space in downloader_host
 downloader_host = downloader_host.replace(space, 'let available = UInt64.max')
 # Expose the production preflight to fixtures, without changing shipping access.
 downloader_host = downloader_host.replace('private nonisolated static func prepare(', 'nonisolated static func prepare(')
+downloader_host = downloader_host.replace('private final class SteamTransferProgress', 'final class SteamTransferProgress')
 fetcher_source = sources['SwiftSteam/Library/SteamLibraryFetcher.swift']
 
 work = Path(tempfile.mkdtemp(prefix='madeira-steam-library-'))
@@ -1244,8 +1277,16 @@ try:
     require(result.get('install') == 'ok' and set(state.chunk_requests) == {new_sha},
             f'an update fetches only the chunk that changed ({len(set(state.chunk_requests))} chunk(s))')
     expected2 = dict(expected1); expected2['bin/game.bin'] = GAME_BIN[:60000] + data(60000, 99) + GAME_BIN[120000:]; expected2['data/Assets.dat'] = ASSETS[:70000]
+    require(int(result['networkBytes']) == len(version2.chunks[new_sha]) and int(result['reusedBytes']) > 0,
+            'update progress counts only the changed compressed chunk, excluding the installed base content')
     require(tree_matches(expected2), 'the updated files have the new bytes, and the file that shrank has no stale tail')
     require('"buildid"\t\t"1001"' in (steam_apps / 'appmanifest_9000.acf').read_text(), 'the record has the new build')
+
+    # Reinstall without a journal: entirely reusable files must produce no fake transfer.
+    state.reset_counters()
+    cached = run('update', fixture)
+    require(int(cached['networkBytes']) == 0 and int(cached['reusedBytes']) > 0 and not state.chunk_requests,
+            'an already installed game completes without any network bytes, even after journals are removed')
 
     # ---- uninstall: everything the install wrote goes; the scanner no longer finds the game
     run('uninstall', fixture)

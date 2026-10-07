@@ -73,6 +73,10 @@ func formatBytes(_ n: Int64) -> String { String(n) }
 enum ProMotionIntent { static let holdMaximum = false }
 enum MadeiraConfig { static func set(_ key: String, _ value: String?) {} }
 final class LogStore { static let shared = LogStore(); func log(_ text: String) {} }
+final class LibraryModel: ObservableObject {
+    static let shared = LibraryModel()
+    @Published var current: UUID?
+}
 struct ContentView: View { var body: some View { Text("Fixture") } }
 enum TouchControlsHost { static func refreshFrame() {} }
 enum MetalBackedView { static func refreshDisplayMode(reason: String) {} }

@@ -56,5 +56,7 @@ jobs:
         run: python3 tests/host/check-steam-cloud.py
       - name: Parse app Swift sources
         run: find app/Madeira -name '*.swift' -print0 | xargs -0 xcrun swiftc -frontend -parse
+      - name: Orientation session transitions
+        run: python3 tests/host/check-orientation.py
       - name: Typecheck changed UI against the iOS SDK
         run: python3 tests/host/check-steam-ui.py

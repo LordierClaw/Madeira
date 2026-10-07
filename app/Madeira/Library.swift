@@ -2763,8 +2763,8 @@ struct DisplayRateSettings: View {
 
     var body: some View {
         Section {
-            Toggle("Always use landscape", isOn: $orientation.forceLandscape)
-            Text("Opens Madeira in landscape, including when iPhone Portrait Orientation Lock is on. Applies immediately and is remembered for the next launch.")
+            Toggle("Always use landscape when playing", isOn: $orientation.forceLandscapeWhenPlaying)
+            Text("Uses landscape during a game session, even with iPhone Portrait Orientation Lock on. Returns to the previous orientation when the session ends; the library and downloads use normal rotation.")
                 .font(.caption).foregroundStyle(.secondary)
             if let problem = orientation.problem {
                 Text(problem).font(.caption).foregroundStyle(.orange)

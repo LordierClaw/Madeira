@@ -10,18 +10,88 @@ import Foundation
 import zlib
 import CommonCrypto
 
-/// Progress for one application install, across all of its depots.
+/// Progress for one application install, across all selected depots.
 struct SteamDownloadProgress: Equatable, Sendable {
-    enum Phase: String, Sendable { case preparing, downloading, finishing }
+    enum Phase: String, Sendable { case preparing, checking, downloading, finishing }
     var phase: Phase = .preparing
-    /// Compressed bytes to fetch for the whole install (all selected depots).
+    /// Compressed bytes needed from the network. During checking, these two
+    /// counters instead describe the content checked, including local files.
     var totalBytes: UInt64 = 0
-    /// Compressed bytes already on disk, including chunks resumed from a
-    /// previous attempt.
     var doneBytes: UInt64 = 0
+    var reusedBytes: UInt64 = 0
+    var preparedDepots = 0
+    var totalDepots = 0
     var bytesPerSecond: Double = 0
 
     var fraction: Double { totalBytes > 0 ? min(1, Double(doneBytes) / Double(totalBytes)) : 0 }
+    var secondsRemaining: Double? {
+        guard phase == .downloading, bytesPerSecond > 0, doneBytes < totalBytes else { return nil }
+        let seconds = Double(totalBytes - doneBytes) / bytesPerSecond
+        return seconds.isFinite ? seconds : nil
+    }
+}
+
+/// Recent completed network payload, never bytes verified on disk. Uptime is
+/// monotonic, so changing the wall clock cannot distort speed or ETA. Empty
+/// samples expire too: a stalled connection must not keep its previous speed.
+struct SteamDownloadRate {
+    let startedAt: TimeInterval
+    private var samples: [(time: TimeInterval, bytes: UInt64)] = []
+    private let window: TimeInterval = 5
+
+    init(startedAt: TimeInterval) { self.startedAt = startedAt }
+
+    mutating func record(_ bytes: UInt64, at now: TimeInterval) {
+        samples.append((now, bytes))
+    }
+
+    mutating func bytesPerSecond(at now: TimeInterval) -> Double {
+        samples.removeAll { $0.time <= now - window }
+        let elapsed = min(window, max(0, now - startedAt))
+        guard elapsed >= 1 else { return 0 }
+        return samples.reduce(0) { $0 + Double($1.bytes) } / elapsed
+    }
+}
+
+/// Report while requests are pending as well as when chunks finish. Keeping
+/// this state on the main actor avoids a timer racing concurrent chunk tasks.
+@MainActor private final class SteamTransferProgress {
+    private var state: SteamDownloadProgress
+    private var rate = SteamDownloadRate(startedAt: ProcessInfo.processInfo.systemUptime)
+    private let report: (SteamDownloadProgress) -> Void
+    private var ticker: Task<Void, Never>?
+
+    init(total: UInt64, reused: UInt64, report: @escaping (SteamDownloadProgress) -> Void) {
+        state = SteamDownloadProgress(phase: .downloading, totalBytes: total, reusedBytes: reused)
+        self.report = report
+        report(state)
+        ticker = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(nanoseconds: 250_000_000) } catch { return }
+                guard !Task.isCancelled else { return }
+                self?.tick()
+            }
+        }
+    }
+
+    func completed(_ bytes: UInt64) {
+        state.doneBytes += bytes
+        rate.record(bytes, at: ProcessInfo.processInfo.systemUptime)
+    }
+
+    private func tick() {
+        state.bytesPerSecond = rate.bytesPerSecond(at: ProcessInfo.processInfo.systemUptime)
+        report(state)
+    }
+
+    func stop() { ticker?.cancel(); ticker = nil }
+
+    func finish() {
+        stop()
+        state.phase = .finishing
+        state.bytesPerSecond = 0
+        report(state)
+    }
 }
 
 /// Orchestrates downloading an owned application's Windows depots from the
@@ -92,7 +162,7 @@ final class DepotDownloader {
         try FileManager.default.createDirectory(at: installURL, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: journalDir, withIntermediateDirectories: true)
 
-        var state = SteamDownloadProgress()
+        var state = SteamDownloadProgress(totalDepots: depots.count)
         report(state)
 
         depotCache = steamApps.appendingPathComponent("depotcache", isDirectory: true)
@@ -109,6 +179,7 @@ final class DepotDownloader {
         // is connected: it idles out during a long download.
         var accountID: UInt64 = 0
         for depot in depots {
+            defer { state.preparedDepots += 1; report(state) }
             try Task.checkCancellation()
             guard let gid = depot.publicManifestID else { continue }
             let key: Data
@@ -145,14 +216,29 @@ final class DepotDownloader {
             throw SteamError.depotNotFound(app.appID)
         }
 
-        // 2. Prepare files and load journals off the main actor.
-        let prepared = try await Task.detached(priority: .userInitiated) {
+        // 2. Prepare and verify local content before defining the network
+        // transfer's denominator. Installing DLC reuses the base game's bytes;
+        // those must never look like an impossibly fast network download.
+        let preparation = Task.detached(priority: .userInitiated) {
             try Self.prepare(plans: plans, installURL: installURL, journalDir: journalDir)
-        }.value
+        }
+        var prepared = try await withTaskCancellationHandler {
+            try await preparation.value
+        } onCancel: { preparation.cancel() }
+        try Task.checkCancellation()
+        state.phase = .checking
         state.totalBytes = prepared.totalBytes
         state.doneBytes = prepared.doneBytes
-        state.phase = .downloading
+        state.reusedBytes = prepared.doneBytes
         report(state)
+        let checkingState = state
+        prepared = try await Self.verify(prepared, plans: plans) { checked, reused in
+            var update = checkingState
+            update.doneBytes = checked
+            update.reusedBytes = reused
+            report(update)
+        }
+        try Task.checkCancellation()
         SteamLog.event("[steam-depot] install begin app=\(app.appID) depots=\(plans.count) files=\(prepared.fileCount) resume=\(prepared.doneBytes > 0 ? 1 : 0)")
 
         let remaining = prepared.remainingUncompressed
@@ -164,14 +250,14 @@ final class DepotDownloader {
 
         // 3. Chunks.
         let started = Date()
-        let resumedBytes = state.doneBytes
-        var lastReport = Date.distantPast
+        let transfer = SteamTransferProgress(total: prepared.totalBytes - prepared.doneBytes,
+                                             reused: prepared.doneBytes, report: report)
+        defer { transfer.stop() }
         for (index, plan) in plans.enumerated() {
             let journal = try JournalWriter(url: prepared.journals[index])
             defer { journal.close() }
             let work = prepared.pending[index]
             let paths = prepared.paths[index]
-            let existing = prepared.existing[index]
             let maximum = maxConcurrentChunks, attempts = attemptsPerChunk
             try await withThrowingTaskGroup(of: (UInt64, UInt64).self) { group in
                 var next = 0
@@ -180,9 +266,7 @@ final class DepotDownloader {
                     let item = work[next]; next += 1
                     let chunk = plan.manifest.files[item.file].chunks[item.chunk]
                     let path = paths[item.file]
-                    let verify = existing[item.file]
                     group.addTask {
-                        if verify, Self.chunkAlreadyPresent(chunk, path: path) { return (item.key, UInt64(chunk.compressedSize)) }
                         try await Self.fetchChunk(chunk, plan: plan, path: path, attempts: attempts, seed: item.file &+ item.chunk)
                         return (item.key, UInt64(chunk.compressedSize))
                     }
@@ -190,22 +274,14 @@ final class DepotDownloader {
                 for _ in 0..<min(maximum, work.count) { enqueue() }
                 for try await (key, bytes) in group {
                     journal.append(key)
-                    state.doneBytes += bytes
-                    let now = Date()
-                    if now.timeIntervalSince(lastReport) >= 0.25 {
-                        lastReport = now
-                        let elapsed = now.timeIntervalSince(started)
-                        if elapsed > 1 { state.bytesPerSecond = Double(state.doneBytes - resumedBytes) / elapsed }
-                        report(state)
-                    }
+                    transfer.completed(bytes)
                     enqueue()
                 }
             }
         }
 
         // 4. Install record. Sizes come from the manifests; no tree walk.
-        state.phase = .finishing
-        report(state)
+        transfer.finish()
         let installed = plans.map { plan in
             AppManifestWriter.InstalledDepot(depotID: Int(plan.depotID), manifestGID: plan.manifestGID,
                                              size: Int64(plan.manifest.totalUncompressedSize),
@@ -363,6 +439,56 @@ final class DepotDownloader {
             result.pending.append(pending)
             result.journals.append(journalURL)
         }
+        return result
+    }
+
+    /// Disk-only phase. Journaled chunks are reused as before; other existing
+    /// chunks are hashed off the main actor, with bounded parallelism. Missing
+    /// chunks are collected before any network speed/ETA is started.
+    private nonisolated static func verify(_ prepared: Prepared, plans: [DepotPlan],
+        progress: @escaping @MainActor @Sendable (UInt64, UInt64) -> Void) async throws -> Prepared {
+        var result = prepared
+        var checked = prepared.doneBytes
+        var lastReport = ProcessInfo.processInfo.systemUptime
+        for (index, plan) in plans.enumerated() {
+            try Task.checkCancellation()
+            let journal = try JournalWriter(url: prepared.journals[index])
+            defer { journal.close() }
+            let work = prepared.pending[index]
+            let paths = prepared.paths[index]
+            let existing = prepared.existing[index]
+            var pending: [WorkItem] = []
+            try await withThrowingTaskGroup(of: (WorkItem, Bool).self) { group in
+                var next = 0
+                func enqueue() {
+                    guard next < work.count else { return }
+                    let item = work[next]; next += 1
+                    let chunk = plan.manifest.files[item.file].chunks[item.chunk]
+                    let path = paths[item.file], hadContent = existing[item.file]
+                    group.addTask {
+                        try Task.checkCancellation()
+                        return (item, hadContent && chunkAlreadyPresent(chunk, path: path))
+                    }
+                }
+                for _ in 0..<min(8, work.count) { enqueue() }
+                for try await (item, present) in group {
+                    let bytes = UInt64(plan.manifest.files[item.file].chunks[item.chunk].compressedSize)
+                    if present { journal.append(item.key); result.doneBytes += bytes }
+                    else { pending.append(item) }
+                    checked += bytes
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if now - lastReport >= 0.25 {
+                        lastReport = now
+                        await progress(checked, result.doneBytes)
+                    }
+                    enqueue()
+                }
+            }
+            // Keep manifest order deterministic despite concurrent verification.
+            result.pending[index] = pending.sorted { $0.key < $1.key }
+        }
+        try Task.checkCancellation()
+        await progress(checked, result.doneBytes)
         return result
     }
 

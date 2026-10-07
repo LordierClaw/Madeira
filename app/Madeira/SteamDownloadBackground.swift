@@ -44,6 +44,7 @@ import UserNotifications
     private var askedNotifications = false
     private var logged = 0
     private var currentName = ""
+    private var lastProgressPhase: SteamDownloadProgress.Phase?
 
     private func log(_ line: String) {
         guard logged < 48 else { return }
@@ -80,16 +81,28 @@ import UserNotifications
     /// A download became active (always a user action or its queue).
     func downloadStarted(appID: Int, name: String) {
         currentName = name
+        lastProgressPhase = nil
         requestNotificationPermission()
         if #available(iOS 26.0, *), Self.continuedEnabled { submitContinued() }
         if #available(iOS 26.0, *), let task = continued as? BGContinuedProcessingTask {
-            task.updateTitle("Downloading \(name)", subtitle: "Steam download in Madeira")
+            task.updateTitle("Preparing \(name)", subtitle: "Steam download in Madeira")
         }
         if isBackground { beginGrace() }
     }
 
     func progress(_ progress: SteamDownloadProgress) {
         if #available(iOS 26.0, *), let task = continued as? BGContinuedProcessingTask {
+            if lastProgressPhase != progress.phase {
+                let action: String
+                switch progress.phase {
+                case .preparing: action = "Preparing"
+                case .checking: action = "Checking files for"
+                case .downloading: action = "Downloading"
+                case .finishing: action = "Finishing"
+                }
+                task.updateTitle("\(action) \(currentName)", subtitle: "Steam download in Madeira")
+                lastProgressPhase = progress.phase
+            }
             let total = Int64(clamping: max(progress.totalBytes, 1))
             if task.progress.totalUnitCount != total { task.progress.totalUnitCount = total }
             task.progress.completedUnitCount = Int64(clamping: min(progress.doneBytes, progress.totalBytes))
@@ -125,7 +138,7 @@ import UserNotifications
             guard ok else { log("register refused id-suffix=queue"); return }
             registered = identifier
         }
-        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: "Downloading \(currentName)",
+        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: "Preparing \(currentName)",
                                                        subtitle: "Steam download in Madeira")
         request.strategy = .fail
         do {
@@ -141,6 +154,7 @@ import UserNotifications
     private func attach(_ task: BGContinuedProcessingTask) {
         continuedPending = false
         continued = task
+        lastProgressPhase = nil
         task.progress.totalUnitCount = 1
         task.expirationHandler = { [weak self] in
             DispatchQueue.main.async {

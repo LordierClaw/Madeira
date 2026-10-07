@@ -4,6 +4,7 @@ import UIKit
 @main
 struct MadeiraApp: App {
     @UIApplicationDelegateAdaptor(MadeiraAppDelegate.self) private var appDelegate
+    @ObservedObject private var library = LibraryModel.shared
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
@@ -23,7 +24,11 @@ struct MadeiraApp: App {
                     GamepadInput.shared.start()
                     HardwareInput.shared.start()
                     JITNetworkShortcut.shared.restoreLeftover()   // also starts its network path monitor
+                    MadeiraOrientation.shared.setPlaying(library.current != nil)
                     MadeiraOrientation.shared.apply()
+                }
+                .onChange(of: library.current) { _, current in
+                    MadeiraOrientation.shared.setPlaying(current != nil)
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { MadeiraOrientation.shared.apply() }
@@ -38,18 +43,38 @@ struct MadeiraApp: App {
 /// notifications (which portrait lock suppresses). No private UIDevice KVC.
 @MainActor final class MadeiraOrientation: ObservableObject {
     static let shared = MadeiraOrientation()
-    @Published var forceLandscape = UserDefaults.standard.bool(forKey: "madeira.forceLandscape") {
+    // Retain the existing saved choice, with the narrower playing-only scope.
+    @Published var forceLandscapeWhenPlaying = UserDefaults.standard.bool(forKey: "madeira.forceLandscape") {
         didSet {
-            guard forceLandscape != oldValue else { return }
-            UserDefaults.standard.set(forceLandscape, forKey: "madeira.forceLandscape")
-            apply(restorePortrait: !forceLandscape)
+            guard forceLandscapeWhenPlaying != oldValue else { return }
+            UserDefaults.standard.set(forceLandscapeWhenPlaying, forKey: "madeira.forceLandscape")
+            apply()
         }
     }
     @Published private(set) var problem: String?
+    private(set) var isPlaying = false
+    private var appliedLandscape = false
+    private var restorePending = false
+    private var returnOrientations: [String: UIInterfaceOrientationMask] = [:]
+    private var generation = 0
 
-    var supported: UIInterfaceOrientationMask { forceLandscape ? .landscape : .allButUpsideDown }
+    private var shouldForceLandscape: Bool { forceLandscapeWhenPlaying && isPlaying }
+    var supported: UIInterfaceOrientationMask { shouldForceLandscape ? .landscape : .allButUpsideDown }
 
-    func apply(restorePortrait: Bool = false) {
+    func setPlaying(_ playing: Bool) {
+        guard playing != isPlaying else { return }
+        isPlaying = playing
+        apply()
+    }
+
+    func apply() {
+        let force = shouldForceLandscape
+        if force && !appliedLandscape { returnOrientations.removeAll() }
+        if appliedLandscape && !force { restorePending = true }
+        if force { restorePending = false }
+        appliedLandscape = force
+        generation += 1
+        let request = generation
         problem = nil
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes
             where scene.activationState == .foregroundActive {
@@ -60,12 +85,28 @@ struct MadeiraApp: App {
                     controller = current.presentedViewController
                 }
             }
-            guard forceLandscape || restorePortrait else { continue }
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: forceLandscape ? .landscape : .portrait)) { [weak self] error in
-                Task { @MainActor in
-                    self?.problem = "Could not rotate the screen: \(error.localizedDescription)"
+            guard force || restorePending else { continue }
+            let id = scene.session.persistentIdentifier
+            if force && returnOrientations[id] == nil {
+                switch scene.interfaceOrientation {
+                case .landscapeLeft: returnOrientations[id] = .landscapeLeft
+                case .landscapeRight: returnOrientations[id] = .landscapeRight
+                case .portraitUpsideDown: returnOrientations[id] = .portraitUpsideDown
+                default: returnOrientations[id] = .portrait
                 }
             }
+            let orientation: UIInterfaceOrientationMask = force ? .landscape : (returnOrientations[id] ?? .portrait)
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { [weak self] error in
+                Task { @MainActor in
+                    guard let self, self.generation == request else { return }
+                    if !force { self.restorePending = true }
+                    self.problem = "Could not rotate the screen: \(error.localizedDescription)"
+                }
+            }
+        }
+        // Preserve a pending restore if the session ended while in the background.
+        if !force, UIApplication.shared.connectedScenes.contains(where: { $0.activationState == .foregroundActive }) {
+            restorePending = false
         }
     }
 }
