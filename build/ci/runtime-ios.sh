@@ -19,7 +19,9 @@ fex)
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_TESTING=OFF -DBUILD_THUNKS=OFF -DBUILD_FEXCONFIG=OFF \
         -DBUILD_FEX_LINUX_TESTS=OFF -DENABLE_FEX_ALLOCATOR=OFF \
-        -DENABLE_ASSERTIONS=OFF -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON
+        -DENABLE_ASSERTIONS=OFF -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON -DTUNE_CPU=none
+    # CMake's host CPU probe reads Linux /proc/cpuinfo; iOS uses the compiler's
+    # baseline arm64 target and FEX's runtime feature detection instead.
     bash build/fex-ios/build.sh
     cmake --build FEX/build-ios --target JemallocLibs --parallel 3
     ;;
