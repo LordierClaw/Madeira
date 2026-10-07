@@ -135,8 +135,13 @@ jobs:
   app:
     needs: [llvm, runtime]
     if: always() && (needs.runtime.result == 'success' || inputs.native_run != '') && (needs.llvm.result == 'success' || inputs.llvm_run != '')
-    runs-on: macos-15
+    # The bundled StikJIT module uses Swift 6.4's qualified-name syntax.
+    # Keep the native dependencies on their verified 26.3 toolchain; Swift and
+    # the final linker need Xcode 27 to consume that framework's interface.
+    runs-on: xcode-27
     timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -182,7 +187,7 @@ jobs:
         id: dxmt-cache
         with:
           path: app/Madeira/libdxmt_combined.a
-          key: dxmt-xcode26.3-v1-${{ steps.library-pins.outputs.dxmt }}-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
+          key: dxmt-xcode27.0-v1-${{ steps.library-pins.outputs.dxmt }}-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
       - name: DXMT for iOS
         if: steps.dxmt-cache.outputs.cache-hit != 'true'
         run: bash build/ci/app-ios.sh dxmt
