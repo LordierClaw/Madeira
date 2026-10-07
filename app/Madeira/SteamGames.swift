@@ -1173,7 +1173,7 @@ struct SteamDLCView: View {
             Section {
                 if loading { ProgressView("Checking owned DLC…") }
                 if let problem { Text(problem).foregroundStyle(.orange) }
-                if !loading, problem == nil, products.isEmpty {
+                if !loading, problem == nil, products.isEmpty, steam.downloads[appID] == nil {
                     Text("No owned DLC found for this game. After buying DLC, refresh this list.")
                         .foregroundStyle(.secondary)
                 }
@@ -1184,7 +1184,7 @@ struct SteamDLCView: View {
                             Label("Installed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
                         } else if product.downloadable {
                             Button("Download") { steam.installDLC([UInt32(product.id)], for: appID) }
-                                .disabled(steam.downloads[appID] != nil || !steam.signedIn)
+                                .disabled(steam.downloads[appID] != nil || !steam.signedIn || loading)
                         } else {
                             Text(product.hasContent ? "No compatible public Windows download is available."
                                  : "No separate download. Steam checks this DLC's license when the game runs.")
@@ -1216,7 +1216,7 @@ struct SteamDLCView: View {
             }
         }
         .navigationTitle("DLC").navigationBarTitleDisplayMode(.inline)
-        .task(id: steam.downloads[appID]?.state) {
+        .task(id: "\(steam.signedIn)-\(SteamSignIn.accountName ?? "")-\(String(describing: steam.downloads[appID]?.state))") {
             if steam.downloads[appID] == nil { await refresh() }
         }
     }

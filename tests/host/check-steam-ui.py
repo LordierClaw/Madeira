@@ -37,7 +37,6 @@ stubs = r'''
 import SwiftUI
 import UIKit
 import CryptoKit
-enum SteamFileError: Error { case invalid(String) }
 enum VDFParser { static func parseTextVDF(from data: Data) -> [String: Any] { [:] } }
 enum SteamError: Error { case appInfoNotFound(UInt32) }
 enum SteamSignIn {

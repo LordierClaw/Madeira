@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
@@ -22,6 +22,9 @@ jobs:
             /tests/host/
             /LICENSES/
             /THIRD-PARTY-NOTICES.md
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
       - name: Host dependencies
         run: |
           sudo apt-get update -qq
@@ -35,7 +38,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           sparse-checkout-cone-mode: false
           sparse-checkout: |

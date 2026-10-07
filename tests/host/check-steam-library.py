@@ -954,7 +954,7 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     session.authToken = fx["auth"] as! String
     session.licenses = [21]
     session.packageBuffers = [21: packageBuffer(apps: [9000, 9100], depots: [9001, 9003])]
-    let version = phase == "update" ? 2 : 1
+    let version = (phase == "update" || phase == "dlc-update") ? 2 : 1
     let gid = (fx["gid\(version)"] as! Int)
     let gidShared = fx["gidShared"] as! Int
     let build = version == 1 ? 1000 : 1001
@@ -997,7 +997,7 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
         if phase == "refused-licensed" { require(error as? SteamError == .depotKeyNotFound(9004), "a refusal for a depot the account is licensed for fails the install") }
     }
     let found = MadeiraDock.games(drive: drive)
-    if phase == "dlc" {
+    if phase == "dlc" || phase == "dlc-update" {
         require(AppManifestWriter.installedDepots(appID: 9000, steamApps: steamApps).contains { $0.depotID == 9001 && $0.dlcAppID == 9300 },
                 "a real DLC transfer records its owning DLC id in the base game's manifest")
     }
@@ -1250,6 +1250,7 @@ try:
     require(result.get('install') == 'failed' and result.get('listed') == '0' and
             not list((work / 'root2').rglob('appmanifest_*.acf')), 'a refused licensed depot fails the install without a record')
     run('dlc', dict(fixture, tmp=str(work / 'dlc-install')))
+    run('dlc-update', dict(fixture, tmp=str(work / 'dlc-install')))
     run('dlc-refused', dict(fixture, tmp=str(work / 'dlc-refused')))
 finally:
     for server in servers:
