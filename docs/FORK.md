@@ -43,6 +43,23 @@ queue preserves FIFO/modifier ordering and never sleeps. A delayed release can
 also defer events behind it; burst text is consequently paced. This tradeoff is
 documented rather than hidden as a general-purpose text-input improvement.
 
+## Trackpad drag investigation, 2026-10-08
+
+The build 15 device log records a long-press drag followed by repeated
+"non-drag finger up" events without a drop. `MetalBackedView` allowed a second
+touch to switch an active drag into its two-finger branch; that branch consumed
+the owner's ending before posting left-up. It retained the ended `UITouch`, so
+later fingers could neither move that drag nor release it. This is separate from
+the bounded 80 ms click queue below the Swift gesture layer.
+
+The trackpad now keeps an active drag with its original finger, releases that
+finger before other input branches, and recovers an owner that has ended or is
+absent from the event. Cancellation, view detachment and app deactivation also
+release and invalidate pending holds. Touches on other views do not count toward
+trackpad gestures. `tests/host/check-trackpad.py` replays the production handlers
+with simulated touch lifetimes. Device verification of this correction is pending;
+it does not establish the cause of every game stop or the separate slow loading.
+
 **Not fixed:** controller behavior in Darkest Dungeon and minor voice-audio
 crackle. The device probe did receive controller buttons, axes and a trigger
 through XInput 1.4, 1.3 and 9.1.0. The player slot was absent at startup and first

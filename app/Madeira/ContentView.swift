@@ -215,12 +215,18 @@ final class MetalBackedView: UIView {
         NotificationCenter.default.addObserver(forName: UIDevice.orientationDidChangeNotification, object: nil, queue: .main) { _ in
             MetalBackedView.refreshDisplayMode(reason: "orientation")
         },
+        NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+            MetalBackedView.keyboardTarget?.resetTrackpadGesture(reason: "app inactive")
+        },
     ]
     static func observeModeChanges() { _ = observers }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard let w = window else { return }   // detach: leave the host be
+        guard let w = window else {
+            resetTrackpadGesture(reason: "view detached")
+            return   // leave the host be
+        }
         MetalBackedView.keyboardTarget = self  // keyboard button targets the live view
         // SwiftUI ancestors attach gesture recognizers that can delay or
         // cancel raw touch delivery (double-tap timing is exactly what
@@ -450,7 +456,7 @@ final class MetalBackedView: UIView {
     //   one finger move       — cursor moves relative (like a laptop pad)
     //   single tap            — left click
     //   double tap            — double click (two rapid clicks)
-    //   double tap + hold     — drag (button held while moving), lift = drop
+    //   long press + move     — drag (button held while moving), lift = drop
     //   two-finger drag       — scroll wheel
     //   two-finger tap        — right click
     // Cursor position lives here (desktop px); wine + the rendered arrow
@@ -500,10 +506,39 @@ final class MetalBackedView: UIView {
         return CGPoint(x: x / n, y: y / n)
     }
     private func activeTouches(_ event: UIEvent?) -> [UITouch] {
-        (event?.allTouches ?? []).filter { $0.phase != .ended && $0.phase != .cancelled }
+        (event?.allTouches ?? []).filter {
+            $0.view === self && $0.phase != .ended && $0.phase != .cancelled
+        }
+    }
+
+    private func resetTrackpadGesture(reason: String) {
+        touchGeneration += 1
+        if dragActive {
+            postPointer(F_LUP)
+            fputs("[trackpad] drag released: \(reason)\n", stderr)
+        }
+        dragActive = false
+        dragTouch = nil
+        twoFingerActive = false
+        twoFingerMoved = false
+        scrollAccum = 0
+        movedBeyondSlop = true   // a cancelled gesture must not become a tap
+        relCarryX = 0; relCarryY = 0
+    }
+
+    /// A missed ending must not leave all future touches waiting for an old
+    /// finger. Inspect the owner's lifetime as well as the callback's subset.
+    private func recoverEndedTrackpadDrag(_ event: UIEvent?) {
+        guard dragActive else { return }
+        guard let owner = dragTouch, owner.phase != .ended, owner.phase != .cancelled,
+              event?.allTouches?.contains(owner) ?? true else {
+            resetTrackpadGesture(reason: "owner no longer active")
+            return
+        }
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        recoverEndedTrackpadDrag(event)
         if HardwareInput.shared.interceptTouches(touches, event, .began) { return }
         if touchPointerMode { touchModeBegan(touches); return }
         guard desktopMode else {
@@ -515,13 +550,15 @@ final class MetalBackedView: UIView {
         let now = Date().timeIntervalSinceReferenceDate
         let active = activeTouches(event)
         touchGeneration += 1
+        // Once a finger owns left-down, extra fingers cannot change this into
+        // a scroll gesture: that used to swallow the owner's eventual up.
+        if dragActive { return }
         if active.count >= 2 {
             twoFingerActive = true
             twoFingerMoved = false
             twoFingerStartTime = now
             lastTwoFingerY = avgPoint(active).y
             scrollAccum = 0
-            // a drag started by the first finger stays active; harmless
             return
         }
         guard let t = touches.first else { return }
@@ -538,6 +575,7 @@ final class MetalBackedView: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, self.touchGeneration == gen, !self.dragActive,
                   !self.movedBeyondSlop, !self.twoFingerActive,
+                  t.phase != .ended, t.phase != .cancelled,
                   // ml643: in mouse-look the finger is the CAMERA, not a pointer.
                   // Holding still to line up a shot must not press the mouse.
                   !InputSettings.shared.relative else { return }
@@ -550,6 +588,7 @@ final class MetalBackedView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        recoverEndedTrackpadDrag(event)
         if HardwareInput.shared.interceptTouches(touches, event, .moved) { return }
         if touchPointerMode { touchModeMoved(touches, event); return }
         guard desktopMode else {
@@ -631,6 +670,19 @@ final class MetalBackedView: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Release before the two-finger/hardware/mode branches can consume the
+        // ending. Other fingers lifting must leave a live owner's drag intact.
+        if dragActive {
+            if let owner = dragTouch, touches.contains(owner) {
+                resetTrackpadGesture(reason: "owner lifted")
+                return
+            }
+            recoverEndedTrackpadDrag(event)
+            if dragActive {
+                fputs("[trackpad] ended: non-drag finger up (drag continues)\n", stderr)
+            }
+            return
+        }
         if HardwareInput.shared.interceptTouches(touches, event, .ended) { return }
         if touchPointerMode { touchModeEnded(touches, event); return }
         guard desktopMode else {
@@ -652,17 +704,6 @@ final class MetalBackedView: UIView {
             return
         }
         touchGeneration += 1   // cancel any pending long-press
-        if dragActive {
-            if let d = dragTouch, !touches.contains(d) {
-                fputs("[trackpad] ended: non-drag finger up (drag continues)\n", stderr)
-                return
-            }
-            fputs("[trackpad] ended: drag drop\n", stderr)
-            postPointer(F_LUP)
-            dragActive = false
-            dragTouch = nil
-            return
-        }
         // stationary release before the 0.5s drag threshold = click.
         // ml643: NOT in relative mode — every small aim adjustment would fire the
         // weapon. Left/right click are on-screen buttons there instead.
@@ -674,6 +715,10 @@ final class MetalBackedView: UIView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if dragActive {
+            resetTrackpadGesture(reason: "touch cancelled")
+            return
+        }
         if HardwareInput.shared.interceptTouches(touches, event, .cancelled) { return }
         if touchPointerMode { touchModeCancelled(touches); return }
         guard desktopMode else {
@@ -683,10 +728,7 @@ final class MetalBackedView: UIView {
             return
         }
         fputs("[trackpad] CANCELLED (dragActive=\(dragActive))\n", stderr)
-        touchGeneration += 1
-        if dragActive { postPointer(F_LUP); dragActive = false }
-        dragTouch = nil
-        twoFingerActive = false
+        resetTrackpadGesture(reason: "touch cancelled")
     }
 }
 
