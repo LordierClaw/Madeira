@@ -78,6 +78,9 @@ typecheck checks the production changed views, model methods and orientation
 code with unrelated runtime services stubbed. CI does not contact Steam or
 include vendor runtimes, credentials, game data or device logs.
 
-A full linked app build and iPhone checks remain required: owned DLC in-game,
+[The full native Debug app and JIT helper now build and link](https://github.com/LordierClaw/Madeira/actions/runs/37581572994)
+from `dbcd1ce`. Local IPA packaging preserves the new native code and rebuilt
+DataFix loader while adding separately supplied compatibility resources; see
+[BUILDING.md](BUILDING.md). iPhone checks remain required: owned DLC in-game,
 resume after termination, cloud upload/backup with real saves, and landscape
 with portrait lock on at cold launch and when returning from the JIT shortcut.

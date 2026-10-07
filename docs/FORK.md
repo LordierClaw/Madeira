@@ -56,13 +56,20 @@ Follow [BUILDING.md](BUILDING.md) with the pinned submodules. Rebuild native app
 code, `ntdll.dll` and `opengl32.dll` before packaging. Inherited tracked binaries
 do **not** contain these new source changes; build outputs are local only.
 The Windows troubleshooting IPAs were made by replacing the rebuilt Wine DLL
-and applying a tested native queue overlay to the c-gow release. A complete
-fresh macOS/Xcode build of this source checkout has not yet been performed.
+and applying a tested native queue overlay to the c-gow release. The fork now
+has a successful
+[native Debug app build](https://github.com/LordierClaw/Madeira/actions/runs/37581572994)
+from commit `dbcd1ce`, including the new UI, native input queues and rebuilt
+Wine loader. Its local IPA packaging reuses the explicitly supplied OpenGL
+plugins, i386 farm and VC runtimes; other inherited PE modules are not all
+rebuilt. This is distinct from a complete rebuild of every shipped component.
+The new native build still needs iPhone/game confirmation.
 
 Microsoft VC runtime files must be supplied separately as described in
-[fetch-vcruntime.md](../tools/fetch-vcruntime.md). They are neither copied nor
-committed by this fork. Wine runtime implementations bearing similar names
-already exist in upstream history; their names alone do not make them Microsoft
+[fetch-vcruntime.md](../tools/fetch-vcruntime.md). They are excluded from source
+commits and CI artifacts. The local packager can copy them from an explicitly supplied,
+checksum-verified compatibility IPA into the final local IPA. Wine runtime
+implementations bearing similar names already exist in upstream history; their names alone do not make them Microsoft
 redistributable payloads. Upstream license files and notices remain intact.
 
 Local IPA/build artifacts, toolchains, game data, device logs, user configuration,

@@ -1,3 +1,77 @@
+# Fork build workflow (2026-10-07)
+
+[Native app build passed](https://github.com/LordierClaw/Madeira/actions/runs/37581572994) for source commit
+`dbcd1cef656db048de9dfc27ec6b37b99a71ea42`. LLVM and native dependencies came
+from successful jobs in runs `37578363960` and `37578838131`; their recipes
+and submodule revisions were checked before reuse. The final run built and
+linked the Debug app and JIT helper and verified their ad-hoc signatures.
+
+Local packaging also passed: `Madeira-0.1.3-UIUX-DLC-Cloud-Landscape.ipa`,
+version 0.1.3, build 14, 154,151,199 bytes. SHA-256:
+`9222ab37da049d4c74c8e16faba16cf22ad6ebc4487c24648e8f4511aa26a8c4`.
+The final package retained `get-task-allow`, `allow-jit` and the increased-memory
+entitlement. ZIP/member hashes, the new UI/input markers and rebuilt DataFix
+loader checks passed. iPhone execution has not been verified for this build.
+
+The maintained `ui-ux` branch uses `.github/workflows/ios-build.yml` and
+`build/ci/*.sh`. The original September build notes below are a historical
+record, not the current fork's submodule availability status. All pinned
+submodules needed by this workflow can now be fetched from their public forks.
+
+The workflow builds LLVM 15's static shader-compiler components, FEX's native
+iOS libraries, crypto/media/fonts/pairing, Wine's native side, ARM64EC
+`ntdll.dll` and `opengl32.dll`, Dock, DXMT, and the Debug app/JIT helper. Native
+libraries and DXMT use Xcode 26.3; the app uses Xcode 27.0 because the inherited
+StikJIT framework was built with Swift 6.4. DXMT's pinned Metal intrinsics do
+not compile with the newer Metal compiler, so its shader job stays separate.
+The app's own Metal effects use its Xcode 27 toolchain.
+
+The pinned FEX fork has PE-only diagnostic references in its Apple build.
+`build/ci/fex-native-diagnostics.h` supplies inactive PE counters and marks the
+Windows memory-attribute query unavailable. `FEXNativeDiagnostics.c` reports
+no rpmalloc snapshot because FEX's Apple configuration disables that allocator.
+These Madeira adapters affect optional reports only; they do not enable PE
+hooks, replace allocation or alter atomic emulation. The FEX source is unchanged.
+The Wine native build separately probes an SDK-specific resource counter and
+marks it unavailable when the SDK lacks it.
+
+Run the **iOS native build** workflow on `ui-ux`. Leave `llvm_run` and
+`native_run` empty for a complete dependency build. To reuse successful
+artifacts from earlier runs, supply their run IDs; the workflow compares the
+relevant source recipes and submodule commits before accepting them. Cached
+DXMT output is keyed by its source and compiler recipes. Artifacts expire
+after seven days; rerun dependency jobs if they are no longer available.
+
+The native artifact excludes separately supplied Microsoft runtimes. Download
+`Madeira-native-app` and package locally with an explicitly supplied compatible
+IPA using `tools/package-local-ipa.py`:
+
+```sh
+python3 tools/package-local-ipa.py \
+  --native-app Madeira-native-app.tar.gz \
+  --source-commit "$(cat source-commit.txt)" \
+  --compat-ipa /path/to/local-compatibility.ipa \
+  --compat-sha256 <verified-sha256-of-that-file> \
+  --output /path/to/Madeira-UIUX.ipa
+```
+
+That local overlay contributes only the OpenGL plugins, i386 Wine farm and
+previously verified VC runtime files. The fresh native app, JIT helper, Wine
+loader and input queue remain from this build. The two Wine ARM64EC runtime
+implementations (`msvcp140.dll`, `vcruntime140.dll`) are retained. This is not
+a rebuild of every inherited PE module or graphics plugin. Keep these local
+inputs and outputs outside commits and CI uploads.
+
+The packager checks ZIP integrity and all member hashes, new UI/input markers,
+loader alignment/padding and the DataFix markers, then writes an IPA checksum
+and provenance manifest. CI ad-hoc-signs the native app with its JIT
+entitlements; the local overlay invalidates the resource seal. Re-sign the
+final IPA through the usual sideload tool. No Apple signing identity or
+provisioning profile is included. Successful compilation does not establish
+that JIT, graphics, input or Steam work on an iPhone; device checks are separate.
+
+---
+
 # Building Madeira from a clean checkout (reproducibility record, 2026-09-16)
 
 This is the "scripts to control compilation and installation" record the
