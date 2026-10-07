@@ -1,1 +1,3 @@
 app/Frameworks/StikJIT.xcframework/** -whitespace
+# Patch context lines deliberately contain a single space.
+*.patch -whitespace
