@@ -67,6 +67,10 @@ UIKit; no private API or system rotation-lock setting is modified.
 
 ## Validation
 
+[CI passed for code commit `4acdc67`](https://github.com/LordierClaw/Madeira/actions/runs/37572179370)
+on 2026-10-07: Linux download fixtures with AddressSanitizer, macOS cloud
+fixtures, Swift syntax checks, and the iOS SDK typecheck described below.
+
 Host fixtures cover DLC ownership/selection, refusal, install records,
 collision preflight, and existing encrypted download/resume/update behavior.
 Cloud fixtures cover both policy choices and deletion/reset cases. An iOS SDK
