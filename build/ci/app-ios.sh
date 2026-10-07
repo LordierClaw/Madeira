@@ -24,6 +24,14 @@ app)
         CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER:-1}" build 2>&1 | tee outputs/xcodebuild.log
     APP=outputs/DerivedData/Build/Products/Debug-iphoneos/Madeira.app
     test -x "$APP/Madeira"
+    # An ad-hoc signature carries the source entitlements for the sideloader to
+    # preserve, especially get-task-allow, which both JIT methods require.
+    # No Apple account, certificate or provisioning profile is used here.
+    find "$APP" -type f -name '*.dylib' -exec codesign --force --sign - --timestamp=none {} \;
+    codesign --force --sign - --timestamp=none "$APP/Frameworks/StikJIT.framework"
+    codesign --force --sign - --timestamp=none "$APP/PlugIns/MadeiraJITHelper.appex"
+    codesign --force --sign - --timestamp=none --entitlements app/Madeira/Madeira.entitlements "$APP"
+    codesign --verify --deep --strict "$APP"
     # Local packaging adds separately supplied runtime payloads. This artifact is
     # deliberately named native-app, not a ready-to-install IPA.
     tar -czf outputs/Madeira-native-app.tar.gz -C "$(dirname "$APP")" Madeira.app

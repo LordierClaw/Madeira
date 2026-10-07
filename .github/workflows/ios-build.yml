@@ -9,8 +9,13 @@ on:
         description: 'Reuse LLVM artifact from this run (same LLVM build recipe required)'
         required: false
         type: string
+      native_run:
+        description: 'Reuse native dependency artifact from this run (same native build recipe required)'
+        required: false
+        type: string
 permissions:
   contents: read
+  actions: read
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
   HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -38,6 +43,7 @@ jobs:
           retention-days: 7
           compression-level: 0
   runtime:
+    if: inputs.native_run == ''
     runs-on: macos-15
     timeout-minutes: 120
     env:
@@ -107,7 +113,7 @@ jobs:
           retention-days: 7
   app:
     needs: [llvm, runtime]
-    if: always() && needs.runtime.result == 'success' && (needs.llvm.result == 'success' || inputs.llvm_run != '')
+    if: always() && (needs.runtime.result == 'success' || inputs.native_run != '') && (needs.llvm.result == 'success' || inputs.llvm_run != '')
     runs-on: macos-15
     timeout-minutes: 60
     steps:
@@ -118,6 +124,17 @@ jobs:
         with:
           name: native-ios
           path: outputs/dependencies
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.native_run || github.run_id }}
+      - name: Check reused native recipes and submodules
+        if: inputs.native_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_RUN: ${{ inputs.native_run }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN" --jq .head_sha)
+          git fetch --depth=1 origin "$sha"
+          git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/madeira-dock build/madeira_cfg.h
       - name: Check reused compiler recipe
         if: inputs.llvm_run != ''
         env:

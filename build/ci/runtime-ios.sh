@@ -13,15 +13,15 @@ fex)
     # Linux conformance binary repositories are not needed for FEXCore on iOS.
     git -C FEX submodule update --init --recursive --depth 1 \
         $(git config -f FEX/.gitmodules --get-regexp path | awk '{print $2}' | grep -vE '(tests-bins|posixtest-bins)')
+    # Disable Linux /proc CPU probing; retain the compiler's iOS arm64 baseline.
     cmake -S FEX -B FEX/build-ios -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+        "-DCMAKE_CXX_FLAGS=-include $ROOT/build/ci/fex-native-diagnostics.h" \
         -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_SYSROOT=iphoneos \
         -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_TESTING=OFF -DBUILD_THUNKS=OFF -DBUILD_FEXCONFIG=OFF \
         -DBUILD_FEX_LINUX_TESTS=OFF -DENABLE_FEX_ALLOCATOR=OFF \
         -DENABLE_ASSERTIONS=OFF -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON -DTUNE_CPU=none
-    # CMake's host CPU probe reads Linux /proc/cpuinfo; iOS uses the compiler's
-    # baseline arm64 target and FEX's runtime feature detection instead.
     bash build/fex-ios/build.sh
     cmake --build FEX/build-ios --target JemallocLibs --parallel 3
     ;;
