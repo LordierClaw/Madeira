@@ -40,6 +40,8 @@ jobs:
   runtime:
     runs-on: macos-15
     timeout-minutes: 120
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/outputs/ccache
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -59,13 +61,15 @@ jobs:
             research/freetype
             build/rppairing-ios/target
             ~/.cargo/registry
-          key: native-deps-xcode26.3-fex26859e1-v1-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}
+            outputs/ccache
+          key: native-deps-xcode26.3-fex26859e1-v2-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: native-deps-xcode26.3-fex26859e1-v2-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}-
       - name: FEX for iOS
         run: bash build/ci/runtime-ios.sh fex
       - name: Crypto, media, fonts and pairing
         run: bash build/ci/runtime-ios.sh media
-      - name: Cache compiled dependencies before Wine
-        if: steps.native-cache.outputs.cache-hit != 'true'
+      - name: Cache dependency build progress
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
@@ -79,6 +83,7 @@ jobs:
             research/freetype
             build/rppairing-ios/target
             ~/.cargo/registry
+            outputs/ccache
       - name: Wine and Dock
         run: bash build/ci/runtime-ios.sh wine
       - name: Bundle native libraries

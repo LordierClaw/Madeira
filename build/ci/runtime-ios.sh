@@ -21,11 +21,15 @@ fex)
         -DBUILD_FEX_LINUX_TESTS=OFF -DENABLE_FEX_ALLOCATOR=OFF \
         -DENABLE_ASSERTIONS=OFF -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON
     bash build/fex-ios/build.sh
+    cmake --build FEX/build-ios --target JemallocLibs --parallel 3
     ;;
 media)
     bash build/gnutls-ios/build.sh
     cp toolchains/gnutls-ios/lib/lib{gmp,gnutls,hogweed,nettle}.a app/Madeira/
     bash build/ffmpeg/build.sh
+    if [ ! -f research/freetype/CMakeLists.txt ]; then
+        git clone --depth 1 --branch VER-2-13-3 https://github.com/freetype/freetype.git research/freetype
+    fi
     bash build/freetype-ios/build.sh
     rustup target add aarch64-apple-ios
     bash build/rppairing-ios/build.sh
