@@ -678,6 +678,10 @@ static struct {
     pthread_mutex_t lock;
 } g_input_q = { .lock = PTHREAD_MUTEX_INITIALIZER };
 
+/* Preserve visible mouse-button and keyboard intervals for state polling.
+ * The helper defers queued releases without sleeping on UIKit/Wine threads. */
+#include "MadeiraClickQueue.h"
+
 static void winios_q_push_ev(unsigned int type, int x, int y, unsigned int flags, unsigned int data) {
     pthread_mutex_lock(&g_input_q.lock);
     unsigned int next = (g_input_q.head + 1) % WINIOS_RING_SIZE;
@@ -748,26 +752,7 @@ BOOL winios_pProcessEvents(DWORD mask) {
             winios_dump_window_tree();
         }
     }
-    BOOL drained = FALSE;
-    for (;;) {
-        winios_input_event_t e;
-        pthread_mutex_lock(&g_input_q.lock);
-        if (g_input_q.tail == g_input_q.head) {
-            pthread_mutex_unlock(&g_input_q.lock);
-            break;
-        }
-        e = g_input_q.buf[g_input_q.tail];
-        g_input_q.tail = (g_input_q.tail + 1) % WINIOS_RING_SIZE;
-        pthread_mutex_unlock(&g_input_q.lock);
-
-        fprintf(stderr, "[winios] drain type=%u x=%d y=%d flags=0x%x\n", e.type, e.x, e.y, e.flags); fflush(stderr);
-        if (e.type == WINIOS_EV_KEY)
-            winios_drv_post_key((unsigned short)e.x, e.flags);
-        else
-            winios_drv_post_mouse(e.x, e.y, e.flags, e.data, NULL);
-        drained = TRUE;
-    }
-    return drained;
+    return madeira_click_drain();
 }
 
 /* ============================================================ *
