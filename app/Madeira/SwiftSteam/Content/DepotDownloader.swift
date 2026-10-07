@@ -46,7 +46,8 @@ struct SteamDownloadRate {
     }
 
     mutating func bytesPerSecond(at now: TimeInterval) -> Double {
-        samples.removeAll { $0.time <= now - window }
+        let cutoff = now - window
+        samples.removeAll { $0.time <= cutoff }
         let elapsed = min(window, max(0, now - startedAt))
         guard elapsed >= 1 else { return 0 }
         return samples.reduce(0) { $0 + Double($1.bytes) } / elapsed

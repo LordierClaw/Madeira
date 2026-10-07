@@ -830,7 +830,9 @@ struct SteamDownloadStatus: View {
         let p = download.progress
         switch download.state {
         case .queued: return "Waiting to start…"
-        case .paused: return p.totalBytes > 0 ? "Paused at \(Int(p.fraction * 100))%" : "Paused"
+        case .paused:
+            if p.phase == .checking { return "Paused while checking files" }
+            return p.totalBytes > 0 ? "Paused at \(Int(p.fraction * 100))%" : "Paused"
         case .failed(let message): return message
         case .active:
             switch p.phase {

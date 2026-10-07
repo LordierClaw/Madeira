@@ -39,6 +39,29 @@ file is resized or journal removed**. For now, overlapping content must be
 installed through Valve's client. This is an explicit limitation, not a claim
 of support for every DLC. No depot priority is guessed.
 
+## Download progress (2026-10-07 follow-up)
+
+The first implementation counted SHA-verified chunks already on disk as new
+network traffic and divided that count by elapsed time since transfer start.
+Installing several DLC against a large existing base game therefore produced
+an initial jump and an inflated speed/short ETA that decayed very slowly.
+Reports only arrived when a chunk completed, so a stalled request retained
+its previous speed.
+
+The downloader now prepares manifests with visible step counts, checks local
+files as a separate disk phase, then fixes the network total to just the
+missing compressed chunks across all selected depots. Reused bytes are shown
+separately. Downloads and disk hashing remain bounded to eight tasks, and
+verified local chunks are journaled for resume. Cancelling preparation also
+cancels its background task.
+
+Speed uses completed network payload in a rolling five-second window with a
+monotonic clock. Reports tick every 250 ms even while waiting for a chunk;
+stale traffic expires, and a zero rate has no ETA. This is successful payload
+throughput, not a wire-byte counter including failed retries. Preparation,
+checking and finalization show no network speed/ETA. Background-task titles
+also identify the current phase. Resuming resets old displayed estimates.
+
 ## Steam Cloud
 
 **When saves differ → Always keep local** is the default in this fork, saved
@@ -55,15 +78,20 @@ File counts and sync status remain visible.
 
 ## Orientation
 
-**Settings → Display → Always use landscape** applies immediately and is
-remembered across launches. The app delegate restricts allowed orientations
-and the foreground window scene requests landscape via Apple's public
-`requestGeometryUpdate` API, including when iPhone portrait lock is enabled.
-This rotates the real scene, including Metal and touch-control windows, rather
-than only applying a SwiftUI visual transform. Turning it off returns to
-portrait and restores system-controlled rotation. UIKit failures are shown
-in Settings with a retry button. Multiwindow/iPad restrictions still belong to
-UIKit; no private API or system rotation-lock setting is modified.
+**Settings → Display → Always use landscape when playing** is remembered
+across launches, including choices saved by the earlier global option. It
+restricts the scene to landscape only while a library/game session is active
+(including its startup and in-game menu). Opening Madeira, browsing the library
+and downloading content keep normal system rotation. Ending the session or a
+failed launch restores the scene's pre-game orientation; an exit in the
+background defers this restoration until the scene is active again.
+
+The app delegate and public `requestGeometryUpdate` API rotate the real scene,
+including Metal and touch controls, even under iPhone portrait lock. Disabling
+the option during a session releases the restriction immediately. UIKit errors
+are shown with a retry action; obsolete callbacks cannot affect a later state.
+No private rotation API or system lock setting is modified. The physical-device
+checks below remain necessary.
 
 ## Validation
 

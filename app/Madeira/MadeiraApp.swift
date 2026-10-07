@@ -78,6 +78,16 @@ struct MadeiraApp: App {
         problem = nil
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes
             where scene.activationState == .foregroundActive {
+            // Save this before notifying UIKit: changing the supported mask
+            // can itself begin an automatic rotation.
+            let id = scene.session.persistentIdentifier
+            if force && returnOrientations[id] == nil {
+                switch scene.interfaceOrientation {
+                case .landscapeLeft: returnOrientations[id] = .landscapeLeft
+                case .landscapeRight: returnOrientations[id] = .landscapeRight
+                default: returnOrientations[id] = .portrait
+                }
+            }
             for window in scene.windows {
                 var controller = window.rootViewController
                 while let current = controller {
@@ -86,15 +96,6 @@ struct MadeiraApp: App {
                 }
             }
             guard force || restorePending else { continue }
-            let id = scene.session.persistentIdentifier
-            if force && returnOrientations[id] == nil {
-                switch scene.interfaceOrientation {
-                case .landscapeLeft: returnOrientations[id] = .landscapeLeft
-                case .landscapeRight: returnOrientations[id] = .landscapeRight
-                case .portraitUpsideDown: returnOrientations[id] = .portraitUpsideDown
-                default: returnOrientations[id] = .portrait
-                }
-            }
             let orientation: UIInterfaceOrientationMask = force ? .landscape : (returnOrientations[id] ?? .portrait)
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { [weak self] error in
                 Task { @MainActor in

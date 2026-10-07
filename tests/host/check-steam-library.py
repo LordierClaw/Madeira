@@ -985,7 +985,7 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     session.authToken = fx["auth"] as! String
     session.licenses = [21]
     session.packageBuffers = [21: packageBuffer(apps: [9000, 9100], depots: [9001, 9003])]
-    let version = (phase == "update" || phase == "dlc-update") ? 2 : 1
+    let version = (phase == "update" || phase == "dlc-update" || phase == "dlc-all") ? 2 : 1
     let gid = (fx["gid\(version)"] as! Int)
     let gidShared = fx["gidShared"] as! Int
     let build = version == 1 ? 1000 : 1001
@@ -1002,10 +1002,18 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
             "\"branches\" { \"public\" { \"buildid\" \"7\" } } } }"]
     let fetcher = SteamLibraryFetcher(session: session)
     guard var app = try await fetcher.fetchInstallInfo(appID: 9000) else { require(false, "app info"); return }
-    if phase.hasPrefix("dlc") {
+    if phase.hasPrefix("dlc") && phase != "dlc-all" {
         app.ownedDLC = [9300]
         app.depots[app.depots.firstIndex { $0.depotID == 9001 }!].dlcAppID = 9300
         if phase == "dlc-refused" { session.refused.insert(9001) }
+    }
+    if phase == "dlc-all" {
+        app.ownedDLC = [9301, 9302]
+        for id in [UInt32(9005), UInt32(9006)] {
+            session.keys[id] = hexData(fx["key"] as! String)
+            app.depots.append(.init(depotID: id, oslist: "windows", dlcAppID: id - 9005 + 9301,
+                                    manifests: ["public": UInt64(id)]))
+        }
     }
     require(app.depots.first { $0.depotID == 9003 }?.publicManifestID == UInt64(gidShared), "the shared depot got its manifest from the owning app")
     require(app.sharedOwners[9100]?.installDir == "Fixture Game", "the owner of the shared depot is known for the record")
@@ -1032,6 +1040,10 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     if phase == "dlc" || phase == "dlc-update" {
         require(AppManifestWriter.installedDepots(appID: 9000, steamApps: steamApps).contains { $0.depotID == 9001 && $0.dlcAppID == 9300 },
                 "a real DLC transfer records its owning DLC id in the base game's manifest")
+    }
+    if phase == "dlc-all" {
+        let ids = Set(AppManifestWriter.installedDepots(appID: 9000, steamApps: steamApps).compactMap(\.dlcAppID))
+        require(ids == [9301, 9302], "both selected DLC are recorded after one combined transfer")
     }
     print("RESULT listed=\(found.filter { $0.id == 9000 && $0.installed }.count)")
     if phase != "interrupt" && phase != "refused-licensed" {
@@ -1287,6 +1299,22 @@ try:
     cached = run('update', fixture)
     require(int(cached['networkBytes']) == 0 and int(cached['reusedBytes']) > 0 and not state.chunk_requests,
             'an already installed game completes without any network bytes, even after journals are removed')
+
+    # Download all missing: keep the already installed base and shared content,
+    # then fetch two independently licensed add-on depots in one operation.
+    addons = [Depot(9005, KEY_MAIN, [dict(name='dlc/one.bin', data=data(45000, 51), chunks=[('zip', 45000)])]),
+              Depot(9006, KEY_MAIN, [dict(name='dlc/two.bin', data=data(68000, 52), chunks=[('lzma', 68000)])])]
+    for addon in addons:
+        state.depots[addon.id] = addon
+        state.manifests[(addon.id, addon.id)] = addon.manifest_zip()[0]
+    state.reset_counters()
+    combined = run('dlc-all', fixture)
+    addon_chunks = {sha: blob for addon in addons for sha, blob in addon.chunks.items()}
+    require(set(state.chunk_requests) == set(addon_chunks) and int(combined['networkBytes']) == sum(map(len, addon_chunks.values())),
+            'two missing DLC share one exact network total; no installed base bytes enter progress or speed')
+    require(int(combined['reusedBytes']) == int(cached['reusedBytes']), 'all cached base content is reported separately from both DLC')
+    require((folder / 'dlc/one.bin').read_bytes() == data(45000, 51) and (folder / 'dlc/two.bin').read_bytes() == data(68000, 52),
+            'both DLC have the verified final contents')
 
     # ---- uninstall: everything the install wrote goes; the scanner no longer finds the game
     run('uninstall', fixture)

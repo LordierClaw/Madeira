@@ -45,7 +45,8 @@ enum UIInterfaceOrientation { case portrait, landscapeLeft, landscapeRight, port
 @MainActor final class UIWindow { var rootViewController: UIViewController? }
 @MainActor final class UIViewController {
     var presentedViewController: UIViewController?
-    func setNeedsUpdateOfSupportedInterfaceOrientations() {}
+    var onUpdate: () -> Void = {}
+    func setNeedsUpdateOfSupportedInterfaceOrientations() { onUpdate() }
 }
 @MainActor final class UIApplication {
     static let shared = UIApplication()
@@ -62,6 +63,10 @@ tests = r"""
         let scene = UIWindowScene()
         UIApplication.shared.connectedScenes = [scene]
         let model = MadeiraOrientation()
+        let controller = UIViewController(), window = UIWindow()
+        window.rootViewController = controller
+        scene.windows = [window]
+        controller.onUpdate = { if model.supported == .landscape { scene.interfaceOrientation = .landscapeLeft } }
         model.forceLandscapeWhenPlaying = true
         precondition(scene.requests.isEmpty && model.supported == .allButUpsideDown, "enabling in the library must not rotate")
         model.apply()
@@ -82,6 +87,7 @@ tests = r"""
         model.setPlaying(true)
         model.forceLandscapeWhenPlaying = false
         precondition(scene.requests.last == .portrait && model.supported == .allButUpsideDown, "disabling mid-session releases the orientation lock")
+        scene.interfaceOrientation = .portrait
         model.forceLandscapeWhenPlaying = true
         precondition(scene.requests.last == .landscape, "enabling mid-session applies immediately")
         scene.activationState = .background
