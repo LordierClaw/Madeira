@@ -14,6 +14,8 @@ dxmt)
         build/dxmt-ios/obj/*.o toolchains/llvm-ios-build/lib/*.a
     ;;
 app)
+    # The app's own SwiftUI effects also compile Metal on this runner.
+    xcodebuild -downloadComponent MetalToolchain
     git submodule update --init --depth 1 FEX
     git -C FEX submodule update --init --depth 1 External/fmt External/range-v3 External/unordered_dense
     mkdir -p app/Madeira/x86_64-vcruntime app/Madeira/i386-windows
