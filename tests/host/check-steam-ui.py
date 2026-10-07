@@ -54,6 +54,7 @@ enum SteamSignIn {
     @Published var signedIn = true
     @Published var cloud: [Int: SteamCloudState] = [:]
     @Published var downloads: [Int: Download] = [:]
+    var cloudBusy: Set<Int> = []
     var inSession = false
     struct Gate { var open = true }
     let gate = Gate()

@@ -363,6 +363,7 @@ final class SteamOwnedLibrary: ObservableObject {
     }
 
     func setKeepsLocalCloudSaves(_ appID: Int, _ keep: Bool) {
+        guard !cloudBusy.contains(appID) else { return }
         UserDefaults.standard.set(keep, forKey: preferenceKey("keep-local", appID))
         objectWillChange.send()
         Task { await syncCloud(appID) }

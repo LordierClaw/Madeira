@@ -1046,6 +1046,14 @@ struct SteamCloudSection: View {
     @State private var confirmDevice = false
     @State private var showFiles = false
 
+    private var syncing: Bool {
+        guard let state = steam.cloud[appID] else { return false }
+        switch state.phase {
+        case .checking, .downloading, .uploading: return true
+        case .ready, .failed: return false
+        }
+    }
+
     private static func when(_ seconds: UInt64) -> String {
         seconds == 0 ? "unknown date" : Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(date: .abbreviated, time: .shortened)
     }
@@ -1061,7 +1069,7 @@ struct SteamCloudSection: View {
                                                                  set: { steam.setKeepsLocalCloudSaves(appID, $0) })) {
                     Text("Always keep local").tag(true)
                     Text("Ask each time").tag(false)
-                }
+                }.disabled(syncing)
                 rows
             } header: {
                 Text("Steam Cloud")

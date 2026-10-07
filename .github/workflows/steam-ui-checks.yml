@@ -2,6 +2,13 @@ name: Steam and UI checks
 on:
   push:
     branches: [ui-ux]
+    paths:
+      - 'app/Madeira/**/*.swift'
+      - 'app/Madeira/SwiftSteam/**'
+      - 'app/Madeira.xcodeproj/**'
+      - 'app/Madeira/Info.plist'
+      - 'tests/host/**'
+      - '.github/workflows/steam-ui-checks.yml'
   workflow_dispatch:
 permissions:
   contents: read
