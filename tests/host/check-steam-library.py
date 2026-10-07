@@ -928,6 +928,10 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
         let read = AppManifestWriter.installedDepots(appID: 10, steamApps: records)
         require(read.count == 2 && read.contains { $0.depotID == 107 && $0.dlcAppID == 999 && $0.manifestGID == 1007 }, "DLC id and manifest survive install-record round trip \(build)")
     }
+    require(AppManifestWriter.sharedDepots(appID: 10, steamApps: records).isEmpty, "an owner record alone cannot mark a shared DLC as installed for another game")
+    try AppManifestWriter.writeManifest(appID: 10, name: "Game", installDir: "Game", buildID: 2, steamID: 1,
+                                       steamAppsPath: records.path, sharedDepots: [(107, 11)])
+    require(AppManifestWriter.sharedDepots(appID: 10, steamApps: records) == [107: 11], "only shared depot references in the base game's completed record count")
 
     // Compile and exercise the production preflight with case-insensitive DLC
     // collisions. Neither an existing file nor a resume journal may change.

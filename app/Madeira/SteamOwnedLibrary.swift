@@ -337,8 +337,10 @@ final class SteamOwnedLibrary: ObservableObject {
         UserDefaults.standard.set(selectedDLC(appID).intersection(licensed).sorted().map(String.init),
                                   forKey: preferenceKey("dlc", appID))
         var record = AppManifestWriter.installedDepots(appID: UInt32(appID), steamApps: Self.steamApps)
-        for owner in Set(info.installDepots().compactMap(\.fromApp)).subtracting([UInt32(appID)]) {
+        let shared = AppManifestWriter.sharedDepots(appID: UInt32(appID), steamApps: Self.steamApps)
+        for owner in Set(shared.values) {
             record += AppManifestWriter.installedDepots(appID: owner, steamApps: Self.steamApps)
+                .filter { shared[$0.depotID] == owner }
         }
         return products.map { product in
             let depots = info.installDepots().filter { $0.dlcAppID == product.appID }

@@ -38,6 +38,23 @@ struct AppManifestWriter {
         }
     }
 
+    /// Shared content counts as installed for a game only when its own
+    /// completed record references the owner's depot, not merely because some
+    /// other game has installed that owner.
+    static func sharedDepots(appID: UInt32, steamApps: URL) -> [Int: UInt32] {
+        let url = steamApps.appendingPathComponent("appmanifest_\(appID).acf")
+        guard let data = try? Data(contentsOf: url), data.count <= 1 << 20,
+              var parser = try? SteamKeyValues(data), let root = try? parser.read(),
+              let record = root["AppState"], record["appid"]?.string == String(appID) else { return [:] }
+        var result: [Int: UInt32] = [:]
+        for (key, value) in record["SharedDepots"]?.fields ?? [:] {
+            if let depot = Int(key), depot > 0, let owner = value.string.flatMap(UInt32.init), owner > 0, owner != appID {
+                result[depot] = owner
+            }
+        }
+        return result
+    }
+
     /// Writes `appmanifest_<appid>.acf` into a Steam library folder
     /// (`steamAppsPath`). `installedDepots` is what Steam trusts as a complete
     /// install. `buildID` is the depot build id from PICS (0 if unknown; Steam
