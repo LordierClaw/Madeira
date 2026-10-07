@@ -1,0 +1,124 @@
+name: iOS native build
+on:
+  push:
+    branches: [ui-ux]
+    paths: ['.github/workflows/ios-build.yml', 'build/ci/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+jobs:
+  llvm:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: llvm-cache
+        with:
+          path: outputs/llvm-ios.tar.gz
+          key: llvm-ios-xcode26.3-${{ hashFiles('build/ci/llvm-ios.sh') }}
+      - name: LLVM for iOS
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        run: bash build/ci/llvm-ios.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: llvm-ios
+          path: outputs/llvm-ios.tar.gz
+          retention-days: 7
+          compression-level: 0
+  runtime:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Build tools
+        run: brew install ccache bison autoconf automake libtool pkgconf
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            FEX/build-ios
+            toolchains/gnutls-ios
+            toolchains/ffmpeg-ios
+            build/gnutls-ios/obj
+            build/ffmpeg/obj
+            build/freetype-ios/build
+            research/freetype
+            build/rppairing-ios/target
+            ~/.cargo/registry
+          key: native-deps-xcode26.3-v1-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}
+      - name: FEX for iOS
+        run: bash build/ci/runtime-ios.sh fex
+      - name: Crypto, media, fonts and pairing
+        run: bash build/ci/runtime-ios.sh media
+      - name: Wine and Dock
+        run: bash build/ci/runtime-ios.sh wine
+      - name: Bundle native libraries
+        run: bash build/ci/runtime-ios.sh pack
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-ios
+          path: outputs/native-ios.tar.gz
+          retention-days: 7
+          compression-level: 0
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runtime-build-logs
+          path: |
+            build/**/*.err
+            build/**/err-*.txt
+            build/**/*.log
+            wine/build-macos/config.log
+          retention-days: 7
+  app:
+    needs: [llvm, runtime]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: '*-ios'
+          merge-multiple: true
+          path: outputs/dependencies
+      - name: Restore libraries
+        run: |
+          tar -xzf outputs/dependencies/llvm-ios.tar.gz
+          tar -xzf outputs/dependencies/native-ios.tar.gz
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: dxmt-cache
+        with:
+          path: app/Madeira/libdxmt_combined.a
+          key: dxmt-xcode26.3-v1-${{ hashFiles('build/dxmt-ios/**', 'build/ci/llvm-ios.sh', 'madeira-d3d12/src/**') }}
+      - name: DXMT for iOS
+        if: steps.dxmt-cache.outputs.cache-hit != 'true'
+        run: bash build/ci/app-ios.sh dxmt
+      - name: Build application and JIT helper
+        run: bash build/ci/app-ios.sh app
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Madeira-native-app
+          path: |
+            outputs/Madeira-native-app.tar.gz
+            outputs/source-commit.txt
+          retention-days: 7
+          compression-level: 0
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app-build-logs
+          path: |
+            outputs/xcodebuild.log
+            build/dxmt-ios/obj/*.err
+          retention-days: 7
