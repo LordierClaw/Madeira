@@ -3703,6 +3703,12 @@ final class ControlsWindow: UIWindow {
 enum TouchControlsHost {
     private static var window: ControlsWindow?
 
+    /// Also used for programmatic scene rotations while device rotation is locked.
+    static func refreshFrame() {
+        guard let scene = window?.windowScene else { return }
+        window?.frame = scene.coordinateSpace.bounds
+    }
+
     static func attach() {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let scene = scenes.first(where: { $0.activationState == .foregroundActive })

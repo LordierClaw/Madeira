@@ -73,6 +73,8 @@ enum ProMotionIntent { static let holdMaximum = false }
 enum MadeiraConfig { static func set(_ key: String, _ value: String?) {} }
 final class LogStore { static let shared = LogStore(); func log(_ text: String) {} }
 struct ContentView: View { var body: some View { Text("Fixture") } }
+enum TouchControlsHost { static func refreshFrame() {} }
+enum MetalBackedView { static func refreshDisplayMode(reason: String) {} }
 struct ClaimGamepadEvents: ViewModifier { func body(content: Content) -> some View { content } }
 final class GamepadInput { static let shared = GamepadInput(); func start() {} }
 final class HardwareInput { static let shared = HardwareInput(); func start() {} }

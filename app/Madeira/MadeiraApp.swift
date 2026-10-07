@@ -9,6 +9,16 @@ struct MadeiraApp: App {
         WindowGroup {
             ContentView()
                 .modifier(ClaimGamepadEvents())
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.onChange(of: geometry.size) { _, _ in
+                            // Programmatic rotation under portrait lock need not
+                            // post UIDevice.orientationDidChangeNotification.
+                            TouchControlsHost.refreshFrame()
+                            MetalBackedView.refreshDisplayMode(reason: "interface-size")
+                        }
+                    }.allowsHitTesting(false)
+                }
                 .onAppear {
                     GamepadInput.shared.start()
                     HardwareInput.shared.start()

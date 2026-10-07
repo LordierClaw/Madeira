@@ -805,6 +805,10 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     "depots" { "201" { "config" { "oslist" "windows" "osarch" "32" } "manifests" { "public" "2001" } } "202" { "manifests" { "public" "2002" } } }
     """#))!
     require(legacy.installDepots().map(\.depotID) == [201, 202], "32-bit-only apps fall back to 32-bit depots")
+    var legacyDLC = legacy
+    legacyDLC.ownedDLC = [999]
+    legacyDLC.depots.append(.init(depotID: 203, osarch: "64", dlcAppID: 999, manifests: ["public": 2003]))
+    require(legacyDLC.installDepots().map(\.depotID) == [201, 202], "64-bit DLC cannot switch a 32-bit base game to the wrong architecture")
     let mac = SteamAppInfo.parse(appID: 10, from: appVDF(#""common" { "name" "Mac" "type" "Game" "oslist" "macos" } "depots" { "301" { "config" { "oslist" "macos" } "manifests" { "public" "3001" } } }"#))!
     require(!mac.installableOnWindows, "apps without a Windows build are not offered")
     let tool = SteamAppInfo.parse(appID: 10, from: appVDF(#""common" { "name" "Tool" "type" "Tool" } "depots" { "401" { "manifests" { "public" "4001" } } }"#))!
@@ -939,7 +943,8 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
         _ = try DepotDownloader.prepare(plans: [collisionPlan(1, "data.bin"), collisionPlan(2, "DATA.bin")], installURL: records, journalDir: records)
         require(false, "overlapping depots must not be written")
     } catch {
-        require(try Data(contentsOf: sentinel) == Data("keep me".utf8), "DLC overlap is rejected before any game file or journal is changed")
+        let preserved = try Data(contentsOf: sentinel)
+        require(preserved == Data("keep me".utf8), "DLC overlap is rejected before any game file or journal is changed")
     }
 }
 

@@ -1,5 +1,9 @@
 # Steam library and downloads
 
+Fork additions on `ui-ux`: see [UI_UX.md](UI_UX.md) for explicit owned-DLC
+downloads, their overlap limitation, and persistent local-save preference.
+The DLC exclusion below describes the inherited implementation.
+
 Madeira shows the games a Steam account owns, installs and updates them from
 Steam's content servers, and removes them again. An installed game starts
 through Madeira Dock like any other Steam game in the prefix.
