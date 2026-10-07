@@ -17,6 +17,7 @@ source = args.source.read_text()
 trackpad = source[source.index('    static var cursor = CGPoint('):source.index('\n/// Arrow-key button')]
 stubs = r'''
 import Foundation
+import CoreGraphics
 
 enum Clock { static var now = 100.0 }
 struct Date { var timeIntervalSinceReferenceDate: Double { Clock.now } }
@@ -67,7 +68,11 @@ final class HardwareInput {
     enum Phase { case began, moved, ended, cancelled }
     static let shared = HardwareInput()
     var intercept = false
-    func interceptTouches(_ touches: Set<UITouch>, _ event: UIEvent?, _ phase: Phase) -> Bool { intercept }
+    var endings = 0
+    func interceptTouches(_ touches: Set<UITouch>, _ event: UIEvent?, _ phase: Phase) -> Bool {
+        if intercept && (phase == .ended || phase == .cancelled) { endings += 1 }
+        return intercept
+    }
 }
 struct UIImpactFeedbackGenerator {
     enum Style { case medium }
@@ -89,6 +94,9 @@ class MetalBackedView: UIView {
     func mapTouch(_ t: UITouch) -> (Int32, Int32) { (0, 0) }
 '''
 tests = r'''
+extension MetalBackedView {
+    func loseInteraction() { LIFECYCLE_RESET }
+}
 func expect(_ want: [UInt32], _ reason: String) {
     if mouse != want {
         fputs("FAIL: \(reason): got \(mouse), expected \(want)\n", stderr)
@@ -99,6 +107,7 @@ func fresh() -> MetalBackedView {
     DispatchQueue.main.tasks.removeAll()
     mouse = []
     HardwareInput.shared.intercept = false
+    HardwareInput.shared.endings = 0
     InputSettings.shared.relative = false
     return MetalBackedView()
 }
@@ -183,6 +192,31 @@ do {
     v.touchesCancelled([a], with: UIEvent(a))
     v.touchesCancelled([a], with: UIEvent(a))
     expect([2, 4], "cancellation releases before an input interceptor consumes it")
+    precondition(HardwareInput.shared.endings == 2, "hardware cancellation must still run")
+}
+do {
+    let v = fresh(), a = startDrag(v), b = UITouch(v)
+    HardwareInput.shared.intercept = true
+    end(v, b, UIEvent(a, b))
+    precondition(HardwareInput.shared.endings == 1, "hardware release must still run during a finger drag")
+    expect([2], "hardware release cannot consume a live finger's drag")
+    HardwareInput.shared.intercept = false
+    end(v, a, UIEvent(a))
+    expect([2, 4], "finger still drops after hardware release")
+}
+do {
+    let v = fresh(), a = startDrag(v)
+    v.loseInteraction()
+    end(v, a, UIEvent(a))
+    expect([2, 4], "background or detach releases exactly once without a phantom tap")
+}
+do {
+    let v = fresh(), a = UITouch(v)
+    v.touchesBegan([a], with: UIEvent(a))
+    v.loseInteraction()
+    DispatchQueue.main.advance(1)
+    end(v, a, UIEvent(a))
+    expect([], "background or detach cancels a pending hold")
 }
 do {
     let v = fresh(), a = startDrag(v)
@@ -227,6 +261,8 @@ print("PASS: trackpad click, drag ownership, both lift orders, orphan recovery, 
 with tempfile.TemporaryDirectory(prefix='madeira-trackpad-') as temp:
     swift = Path(temp) / 'Trackpad.swift'
     exe = Path(temp) / 'trackpad'
-    swift.write_text(stubs + trackpad + tests)
+    # Older source has no lifecycle hook; its owner-lifts regression fails first.
+    lifecycle = 'resetTrackpadGesture(reason: "fixture lifecycle loss")' if 'func resetTrackpadGesture' in trackpad else ''
+    swift.write_text(stubs + trackpad + tests.replace('LIFECYCLE_RESET', lifecycle))
     subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', str(swift), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

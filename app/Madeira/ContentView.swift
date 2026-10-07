@@ -678,6 +678,7 @@ final class MetalBackedView: UIView {
                 return
             }
             recoverEndedTrackpadDrag(event)
+            if HardwareInput.shared.interceptTouches(touches, event, .ended) { return }
             if dragActive {
                 fputs("[trackpad] ended: non-drag finger up (drag continues)\n", stderr)
             }
@@ -715,11 +716,12 @@ final class MetalBackedView: UIView {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if dragActive {
+        let cancelledDrag = dragActive
+        if cancelledDrag {
             resetTrackpadGesture(reason: "touch cancelled")
-            return
         }
         if HardwareInput.shared.interceptTouches(touches, event, .cancelled) { return }
+        if cancelledDrag { return }
         if touchPointerMode { touchModeCancelled(touches); return }
         guard desktopMode else {
             guard let t = touches.first else { return }
