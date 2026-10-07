@@ -901,6 +901,9 @@ struct SteamGameSheet: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     Section {
+                        NavigationLink { SteamDLCView(appID: appID) } label: {
+                            Label("Downloadable content (DLC)", systemImage: "square.stack.3d.up")
+                        }
                         Link(destination: URL(string: "https://store.steampowered.com/app/\(appID)/")!) {
                             Label("View in the Steam Store", systemImage: "safari")
                         }
@@ -1041,6 +1044,7 @@ struct SteamCloudSection: View {
     @ObservedObject private var steam = SteamOwnedLibrary.shared
     @State private var confirmCloud = false
     @State private var confirmDevice = false
+    @State private var showFiles = false
 
     private static func when(_ seconds: UInt64) -> String {
         seconds == 0 ? "unknown date" : Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(date: .abbreviated, time: .shortened)
@@ -1053,11 +1057,16 @@ struct SteamCloudSection: View {
     var body: some View {
         if SteamOwnedLibrary.cloudEnabled {
             Section {
+                Picker("When saves differ", selection: Binding(get: { steam.keepsLocalCloudSaves(appID) },
+                                                                 set: { steam.setKeepsLocalCloudSaves(appID, $0) })) {
+                    Text("Always keep local").tag(true)
+                    Text("Ask each time").tag(false)
+                }
                 rows
             } header: {
                 Text("Steam Cloud")
             } footer: {
-                Text("Saves sync with Steam Cloud when Madeira starts and when this page opens, not while you play: use Upload saves and close Madeira in the game menu when you stop, or what you played is uploaded the next time Madeira starts. A save that differs on both sides, or that is missing on this device, is never replaced without asking, and a save a sync replaces is kept in Files › Madeira › Steam Cloud Backups.")
+                Text("Saves sync before play and when this page opens. Always keep local uploads this device's version whenever saves differ, without asking again. New cloud saves can download; locally deleted saves stay deleted. Replaced copies are backed up in Files › Madeira › Steam Cloud Backups. Use Upload saves and close Madeira when you stop playing.")
             }
         }
     }
@@ -1099,7 +1108,8 @@ struct SteamCloudSection: View {
             Label(missing == conflicts.count ? "\(Self.saves(missing)) synced here before \(missing == 1 ? "is" : "are") missing on this device"
                   : "\(Self.saves(conflicts.count)) differ between Steam Cloud and this device", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            ForEach(conflicts) { entry in
+            DisclosureGroup("Show differing files (\(conflicts.count))", isExpanded: $showFiles) {
+              ForEach(conflicts) { entry in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.name).font(.subheadline.weight(.medium))
                     Text("Steam Cloud: \(Self.when(entry.cloudTime)) · \(Self.size(entry.cloudSize))\(entry.kind != .cloudOnly && entry.cloudTime > entry.localTime ? " · newer" : "")")
@@ -1108,6 +1118,7 @@ struct SteamCloudSection: View {
                          : "This device: \(Self.when(entry.localTime)) · \(Self.size(entry.localSize))\(entry.localTime > entry.cloudTime ? " · newer" : "")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+              }
             }
             Text("Nothing is changed until you choose which to keep.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -1145,6 +1156,77 @@ struct SteamCloudSection: View {
             Text("Uploaded \(Self.saves(last)).").font(.caption).foregroundStyle(.secondary)
         }
         Button("Sync now") { Task { await steam.syncCloud(appID) } }
+    }
+}
+
+/// Licensed DLC is optional. Downloading verifies the current base build too,
+/// keeping game and DLC versions together and reusing verified chunks.
+struct SteamDLCView: View {
+    let appID: Int
+    @ObservedObject private var steam = SteamOwnedLibrary.shared
+    @State private var products: [SteamOwnedLibrary.DLC] = []
+    @State private var loading = false
+    @State private var problem: String?
+
+    var body: some View {
+        Form {
+            Section {
+                if loading { ProgressView("Checking owned DLC…") }
+                if let problem { Text(problem).foregroundStyle(.orange) }
+                if !loading, problem == nil, products.isEmpty {
+                    Text("No owned DLC found for this game. After buying DLC, refresh this list.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(products) { product in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(product.name).font(.headline)
+                        if product.installed {
+                            Label("Installed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+                        } else if product.downloadable {
+                            Button("Download") { steam.installDLC([UInt32(product.id)], for: appID) }
+                                .disabled(steam.downloads[appID] != nil || !steam.signedIn)
+                        } else {
+                            Text(product.hasContent ? "No compatible public Windows download is available."
+                                 : "No separate download. Steam checks this DLC's license when the game runs.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: { Text("Owned DLC") } footer: {
+                Text("DLC installs into the game's folder. Madeira checks the current base game as well, reuses matching files, and includes downloaded DLC in future updates and repairs. Downloading files does not replace Steam's ownership check.")
+            }
+            if let download = steam.downloads[appID] {
+                Section("Download") {
+                    SteamDownloadStatus(download: download)
+                    switch download.state {
+                    case .active, .queued: Button("Pause") { steam.pause(appID) }
+                    case .paused, .failed: Button("Resume") { steam.install(appID) }
+                    }
+                }
+            } else {
+                Section {
+                    let missing = products.filter { $0.downloadable && !$0.installed }
+                    if !missing.isEmpty {
+                        Button("Download all missing DLC") {
+                            steam.installDLC(Set(missing.map { UInt32($0.id) }), for: appID)
+                        }.disabled(!steam.signedIn || loading)
+                    }
+                    Button("Refresh DLC list") { Task { await refresh() } }.disabled(loading || !steam.signedIn)
+                }
+            }
+        }
+        .navigationTitle("DLC").navigationBarTitleDisplayMode(.inline)
+        .task(id: steam.downloads[appID]?.state) {
+            if steam.downloads[appID] == nil { await refresh() }
+        }
+    }
+
+    private func refresh() async {
+        guard !loading else { return }
+        loading = true; problem = nil
+        defer { loading = false }
+        do { products = try await steam.loadDLC(appID) }
+        catch { products = []; problem = SteamSignIn.message(error) }
     }
 }
 
@@ -1231,6 +1313,11 @@ struct SteamEntrySection: View {
                     .disabled(!steam.signedIn)
                 Text("Checks installed content and downloads missing or changed files from the current Steam build.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            if downloads {
+                NavigationLink { SteamDLCView(appID: appID) } label: {
+                    Label("Downloadable content (DLC)", systemImage: "square.stack.3d.up")
+                }
             }
             LabeledContent("App ID", value: String(appID))
             if let freeSpace { LabeledContent("Free space on this device", value: formatBytes(freeSpace)) }

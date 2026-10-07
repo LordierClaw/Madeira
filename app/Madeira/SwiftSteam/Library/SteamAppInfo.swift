@@ -28,6 +28,10 @@ struct SteamAppInfo {
     var libraryHero: String?
     var headerImage: String?
     var parentID: UInt32?
+    /// Product relationships are discovery metadata, never proof of ownership.
+    var dlcAppIDs: Set<UInt32> = []
+    /// Populated from the signed-in account's licenses before an install.
+    var ownedDLC: Set<UInt32> = []
     /// Steam's launch configuration (`config.launch`), in Steam's order. Only
     /// "Start with: The game" reads it (SteamDirectStart); Madeira Dock leaves
     /// the choice to Valve's client.
@@ -152,24 +156,27 @@ struct SteamAppInfo {
         oslist.lowercased().contains("windows") || oslist.isEmpty
     }
 
+    /// Valve lists DLC depots under the base app, including multi-depot DLC.
+    var relatedDLC: Set<UInt32> { dlcAppIDs.union(depots.compactMap(\.dlcAppID)) }
+
     /// The depots a Windows install takes: matching OS, architecture-neutral
     /// or matching osarch, common or requested-language content, no
-    /// low-violence alternates, no DLC or shared redistributables, and only
+    /// low-violence alternates, only licensed DLC, no shared redistributables, and only
     /// depots that publish a public manifest. A 64-bit selection falls back
     /// to 32-bit depots when the app only publishes those.
     func installDepots(os: String = "windows", arch: String = "64",
                        language: String = "english") -> [DepotInfo] {
         func select(_ arch: String) -> [DepotInfo] {
             depots.filter { d in
-                d.supports(os: os) && d.dlcAppID == nil && !d.isSharedInstall &&
+                d.supports(os: os) && (d.dlcAppID.map { ownedDLC.contains($0) } ?? true) && !d.isSharedInstall &&
                 d.publicManifestID != nil && !d.lowViolence &&
                 (d.osarch.isEmpty || d.osarch == arch) &&
                 (d.language.isEmpty || d.language.caseInsensitiveCompare(language) == .orderedSame)
             }.sorted { $0.depotID < $1.depotID }
         }
         let preferred = select(arch)
-        if arch == "64", !preferred.contains(where: { $0.osarch == "64" }),
-           depots.contains(where: { $0.osarch == "32" && $0.supports(os: os) }) {
+        if arch == "64", !preferred.contains(where: { $0.osarch == "64" && $0.dlcAppID == nil }),
+           depots.contains(where: { $0.osarch == "32" && $0.dlcAppID == nil && $0.supports(os: os) }) {
             return select("32")
         }
         return preferred
@@ -191,7 +198,7 @@ struct SteamAppInfo {
     private func selectionRule(_ d: DepotInfo, chosen: Set<UInt32>, os: String, language: String) -> String {
         if chosen.contains(d.depotID) { return "sel" }
         if !d.supports(os: os) { return "os" }
-        if d.dlcAppID != nil { return "dlc" }
+        if let id = d.dlcAppID, !ownedDLC.contains(id) { return "unowned-dlc" }
         if d.isSharedInstall { return "shared" }
         if d.publicManifestID == nil { return "nomanifest" }
         if d.lowViolence { return "lowviolence" }
@@ -263,6 +270,17 @@ struct SteamAppInfo {
             info.headerImage = asset(common["header_image"])
             if let parent = (common["parent"] as? String).flatMap(UInt32.init), parent != 0, parent != info.appID {
                 info.parentID = parent
+            }
+        }
+
+        if let extended = appInfo["extended"] as? [String: Any] {
+            if info.type == .dlc, let parent = (extended["dlcforappid"] as? String).flatMap(UInt32.init), parent > 0 {
+                info.parentID = parent
+            }
+            if let ids = extended["listofdlc"] as? String {
+                info.dlcAppIDs = Set(ids.split(separator: ",").compactMap {
+                    UInt32($0.trimmingCharacters(in: .whitespacesAndNewlines))
+                }.filter { $0 > 0 && $0 != appID })
             }
         }
 

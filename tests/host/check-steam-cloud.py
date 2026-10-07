@@ -113,6 +113,19 @@ check(only(plan(e(.cloudOnly, cloud: 2), deleted)) == "download", "  the cloud's
 check(only(plan(e(.differ, cloud: 1, local: 9), deleted)) == "ask", "  a new save of that name later: a choice")
 
 // The production comparison over a prefix laid out like a game that keeps its saves in
+// Always keep local resolves even a cloud-only edit without replacing a local file.
+for known: String? in [nil, hex(1), hex(2), SteamCloudPlan.missingMark + hex(1), deleted] {
+    let baseline = known.map { [key: $0] } ?? [:]
+    let local = SteamCloudPlan.make(audit: SteamCloudAudit(entries: [e(.differ, cloud: 2, local: 1)]), baseline: baseline, keepLocal: true)
+    check(only(local) == "upload", "keep local uploads differences without asking, baseline=\(known ?? "none")")
+    let missing = SteamCloudPlan.make(audit: SteamCloudAudit(entries: [e(.cloudOnly, cloud: 2)]), baseline: baseline, keepLocal: true)
+    check(only(missing) == (known == nil ? "download" : "nothing"), "keep local imports new cloud saves but preserves local deletions")
+    if known != nil { check(missing.settled[key] == SteamCloudPlan.deletedMark + hex(2), "a preserved deletion is recorded to avoid repeated prompts") }
+}
+let localOnly = SteamCloudPlan.make(audit: SteamCloudAudit(entries: [e(.localOnly, local: 1)]), baseline: [key: hex(1)], keepLocal: true)
+check(only(localOnly) == "upload", "keep local restores a cloud-deleted file from the device")
+
+// The production comparison over a prefix laid out like a game that keeps its saves in
 // <install>/savedata/<64-bit Steam ID>/ (ufs path "savedata/{64BitSteamID}").
 let steamID: UInt64 = 76561198000000001
 let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("cloud-\(getpid())", isDirectory: true)

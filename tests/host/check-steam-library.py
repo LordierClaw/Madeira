@@ -120,7 +120,7 @@ for path in ['SteamOwnedLibrary.swift', 'SteamGames.swift', 'SteamInstall.swift'
     for word in ['SteamTokenStore', 'SecItem', 'kSecClass', 'saveTokens', 'clearTokens', 'loadTokens', 'UserDefaults', 'refreshToken']:
         if path == 'SwiftSteam/Core/SteamSession.swift' and word == 'refreshToken':
             continue  # it logs on with the token SteamSignIn hands out
-        if path == 'SteamGames.swift' and word == 'UserDefaults':
+        if path in ('SteamGames.swift', 'SteamOwnedLibrary.swift') and word == 'UserDefaults':
             continue
         require(word not in text, f'{path}: no {word} (sign-in tokens stay in SteamSignIn)')
 require('SteamSignIn.credentialsForDock()' in sources['SwiftSteam/Core/SteamSession.swift'],
@@ -794,7 +794,12 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     require(info.downloadSize(for: "windows") == 420, "the download size counts only the selected depots")
     require(info.buildID == 4242 && info.installableOnWindows && info.installDir == "Fixture Game", "build id, install folder and Windows installability")
     require(info.libraryCapsule == "cap/1.jpg" && info.parentID == nil, "artwork name; a parent equal to itself is not kept")
-    require(info.depotSelectionSummary().contains("103[-]lang") && info.depotSelectionSummary().contains("107[-]dlc"), "the selection log names the rule that left a depot out")
+    require(info.depotSelectionSummary().contains("103[-]lang") && info.depotSelectionSummary().contains("107[-]unowned-dlc"), "the selection log names the rule that left a depot out")
+    var withDLC = info
+    withDLC.ownedDLC = [999]
+    require(withDLC.installDepots().map(\.depotID) == [101, 102, 105, 107], "only explicitly licensed DLC enters the install plan")
+    withDLC.ownedDLC = [998]
+    require(withDLC.installDepots().map(\.depotID) == info.installDepots().map(\.depotID), "an unrelated license does not unlock DLC")
     let legacy = SteamAppInfo.parse(appID: 10, from: appVDF(#"""
     "common" { "name" "Old" "type" "Game" "oslist" "windows" } "config" { "installdir" "Old" }
     "depots" { "201" { "config" { "oslist" "windows" "osarch" "32" } "manifests" { "public" "2001" } } "202" { "manifests" { "public" "2002" } } }
@@ -896,6 +901,46 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     require(session.picsAppRequests.flatMap { $0 }.sorted() == [9500, 9501, 9503], "product info was asked for every app of the packages")
     let licensedDepots = try await fetcher.ownedDepotIDs()
     require(licensedDepots == [9502, 9504], "depot ids of the licenses")
+
+    session.appInfo[10] = String(data: full, encoding: .utf8)!
+    session.appInfo[999] = #""appinfo" { "common" { "name" "Expansion" "type" "DLC" } "extended" { "dlcforappid" "10" } }"#
+    session.packageBuffers[12] = packageBuffer(apps: [999], depots: [107])
+    let (_, addons) = try await fetcher.fetchDLC(appID: 10)
+    require(addons.map(\.appID) == [999] && addons.first?.parentID == 10, "DLC discovery intersects base-app depots with current licenses")
+    let baseOnly = try await fetcher.fetchInstallInfo(appID: 10)!
+    require(!baseOnly.installDepots().contains { $0.depotID == 107 }, "owning DLC does not silently opt into downloading it")
+    let selected = try await fetcher.fetchInstallInfo(appID: 10, selectedDLC: [999])!
+    require(selected.installDepots().contains { $0.depotID == 107 }, "explicit selection reaches the real install plan")
+    session.packageBuffers[12] = packageBuffer(apps: [], depots: [])
+    do { _ = try await fetcher.fetchInstallInfo(appID: 10, selectedDLC: [999]); require(false, "a revoked DLC license must fail") }
+    catch { require(true, "DLC ownership is refreshed, not trusted from an old UI list") }
+
+    // A DLC record round trip, including a base-game repair with that same DLC.
+    let records = URL(fileURLWithPath: fx["tmp"] as! String).appendingPathComponent("dlc-records")
+    try FileManager.default.createDirectory(at: records, withIntermediateDirectories: true)
+    for build: UInt32 in [1, 2] {
+        try AppManifestWriter.writeManifest(appID: 10, name: "Game", installDir: "Game", buildID: build, steamID: 1,
+            steamAppsPath: records.path, installedDepots: [.init(depotID: 101, manifestGID: 1001), .init(depotID: 107, manifestGID: 1007, dlcAppID: 999)])
+        let read = AppManifestWriter.installedDepots(appID: 10, steamApps: records)
+        require(read.count == 2 && read.contains { $0.depotID == 107 && $0.dlcAppID == 999 && $0.manifestGID == 1007 }, "DLC id and manifest survive install-record round trip \(build)")
+    }
+
+    // Compile and exercise the production preflight with case-insensitive DLC
+    // collisions. Neither an existing file nor a resume journal may change.
+    let sentinel = records.appendingPathComponent("data.bin")
+    try Data("keep me".utf8).write(to: sentinel)
+    func collisionPlan(_ id: UInt32, _ name: String) -> DepotDownloader.DepotPlan {
+        let manifest = DepotManifest(depotID: id, manifestGID: 1, creationTime: 0,
+            totalUncompressedSize: 1, totalCompressedSize: 1,
+            files: [.init(filename: name, size: 1, flags: 0, chunks: [])])
+        return .init(depotID: id, manifestGID: 1, key: Data(), manifest: manifest, hosts: [], auth: [:], declaredSize: 1, health: ContentHostHealth())
+    }
+    do {
+        _ = try DepotDownloader.prepare(plans: [collisionPlan(1, "data.bin"), collisionPlan(2, "DATA.bin")], installURL: records, journalDir: records)
+        require(false, "overlapping depots must not be written")
+    } catch {
+        require(try Data(contentsOf: sentinel) == Data("keep me".utf8), "DLC overlap is rejected before any game file or journal is changed")
+    }
 }
 
 @MainActor func install(_ fx: [String: Any], phase: String) async throws {
@@ -925,22 +970,37 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
             "\"depots\" { \"9003\" { \"config\" { \"oslist\" \"windows\" } \"manifests\" { \"public\" { \"gid\" \"\(gidShared)\" \"download\" \"1\" } } } " +
             "\"branches\" { \"public\" { \"buildid\" \"7\" } } } }"]
     let fetcher = SteamLibraryFetcher(session: session)
-    guard let app = try await fetcher.fetchInstallInfo(appID: 9000) else { require(false, "app info"); return }
+    guard var app = try await fetcher.fetchInstallInfo(appID: 9000) else { require(false, "app info"); return }
+    if phase.hasPrefix("dlc") {
+        app.ownedDLC = [9300]
+        app.depots[app.depots.firstIndex { $0.depotID == 9001 }!].dlcAppID = 9300
+        if phase == "dlc-refused" { session.refused.insert(9001) }
+    }
     require(app.depots.first { $0.depotID == 9003 }?.publicManifestID == UInt64(gidShared), "the shared depot got its manifest from the owning app")
     require(app.sharedOwners[9100]?.installDir == "Fixture Game", "the owner of the shared depot is known for the record")
     let downloader = DepotDownloader(session: session)
     downloader.contentHosts = { _ in hosts }
     var lastProgress = SteamDownloadProgress()
-    let licensed: Set<UInt32> = phase == "refused-licensed" ? [9001, 9003, 9004] : [9001, 9003]
+    let licensed: Set<UInt32> = phase == "dlc-refused" ? [9003] : (phase == "refused-licensed" ? [9001, 9003, 9004] : [9001, 9003])
     do {
         _ = try await downloader.install(app, steamApps: steamApps, ownedDepots: { licensed }) { lastProgress = $0 }
+        require(phase != "dlc-refused", "a selected DLC refusal cannot silently complete the base game")
         print("RESULT install=ok")
     } catch {
         print("RESULT install=failed reason=\(SteamOwnedLibrary.reason(error))")
+        if phase == "dlc-refused" {
+            require(error as? SteamError == .depotKeyNotFound(9001), "Valve's refusal of selected DLC fails the download")
+            require(AppManifestWriter.installedDepots(appID: 9000, steamApps: steamApps).isEmpty, "failed DLC writes no completed install record")
+            return
+        }
         require(phase == "interrupt" || phase == "refused-licensed", "install failed only where the phase expects it (\(error))")
         if phase == "refused-licensed" { require(error as? SteamError == .depotKeyNotFound(9004), "a refusal for a depot the account is licensed for fails the install") }
     }
     let found = MadeiraDock.games(drive: drive)
+    if phase == "dlc" {
+        require(AppManifestWriter.installedDepots(appID: 9000, steamApps: steamApps).contains { $0.depotID == 9001 && $0.dlcAppID == 9300 },
+                "a real DLC transfer records its owning DLC id in the base game's manifest")
+    }
     print("RESULT listed=\(found.filter { $0.id == 9000 && $0.installed }.count)")
     if phase != "interrupt" && phase != "refused-licensed" {
         require(lastProgress.phase == .finishing && lastProgress.doneBytes == lastProgress.totalBytes && lastProgress.totalBytes > 0, "progress ends complete: \(lastProgress.doneBytes)/\(lastProgress.totalBytes)")
@@ -1010,6 +1070,8 @@ space = ('let values = try? installURL.resourceValues(forKeys: [.volumeAvailable
          '            let available = UInt64(max(0, values?.volumeAvailableCapacityForImportantUsage ?? Int64.max))')
 assert space in downloader_host
 downloader_host = downloader_host.replace(space, 'let available = UInt64.max')
+# Expose the production preflight to fixtures, without changing shipping access.
+downloader_host = downloader_host.replace('private nonisolated static func prepare(', 'nonisolated static func prepare(')
 fetcher_source = sources['SwiftSteam/Library/SteamLibraryFetcher.swift']
 
 work = Path(tempfile.mkdtemp(prefix='madeira-steam-library-'))
@@ -1187,6 +1249,8 @@ try:
     result = run('refused-licensed', other)
     require(result.get('install') == 'failed' and result.get('listed') == '0' and
             not list((work / 'root2').rglob('appmanifest_*.acf')), 'a refused licensed depot fails the install without a record')
+    run('dlc', dict(fixture, tmp=str(work / 'dlc-install')))
+    run('dlc-refused', dict(fixture, tmp=str(work / 'dlc-refused')))
 finally:
     for server in servers:
         server.shutdown(); server.server_close()

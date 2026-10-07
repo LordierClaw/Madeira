@@ -17,6 +17,28 @@ class SteamLibraryFetcher {
         self.session = session
     }
 
+    func resetCaches() { ownedDepotCache = nil }
+
+    /// Refresh licenses for DLC actions: store metadata alone never grants access.
+    private func licensedAppIDs() async throws -> Set<UInt32> {
+        try await session.ensureConnected()
+        let packages = try await fetchLicenseList()
+        let tokens = try await fetchPICSAccessTokens(packageIDs: packages)
+        return try await fetchAppIDsFromPackages(packageIDs: packages, tokens: tokens)
+    }
+
+    func fetchDLC(appID: UInt32) async throws -> (SteamAppInfo, [SteamAppInfo]) {
+        guard let app = try await fetchAppInfo(appID: appID) else { throw SteamError.appInfoNotFound(appID) }
+        let licensed = try await licensedAppIDs()
+        let ids = app.relatedDLC.intersection(licensed).sorted()
+        guard !ids.isEmpty else { return (app, []) }
+        let tokens = try await fetchPICSAccessTokens(appIDs: ids)
+        let products = try await fetchAppInfo(appIDs: ids, tokens: tokens)
+        return (app, ids.map { id in
+            products.first { $0.appID == id } ?? SteamAppInfo(appID: id, name: "DLC \(id)", type: .dlc)
+        })
+    }
+
     // MARK: - Fetch Owned Games
 
     /// Fetches the account's package IDs from the license list, resolves them
@@ -91,14 +113,22 @@ class SteamLibraryFetcher {
     /// The app's metadata for an install, with the content metadata of the
     /// apps it shares depots with resolved. This never supplies depot keys or
     /// grants access: every later content request still goes to Valve.
-    func fetchInstallInfo(appID: UInt32) async throws -> SteamAppInfo? {
+    func fetchInstallInfo(appID: UInt32, selectedDLC: Set<UInt32> = []) async throws -> SteamAppInfo? {
         try Task.checkCancellation()
         guard var app = try await fetchAppInfo(appID: appID) else { return nil }
+        if !selectedDLC.isEmpty {
+            let licensed = try await licensedAppIDs()
+            let requested = selectedDLC.intersection(app.relatedDLC)
+            guard requested.isSubset(of: licensed) else {
+                throw SteamFileError.invalid("Steam no longer grants access to a selected DLC. Refresh the DLC list before retrying.")
+            }
+            app.ownedDLC = requested
+        }
         try Task.checkCancellation()
         var owners: [UInt32: SteamAppInfo] = [appID: app]
         var visited: Set<UInt32> = [appID], references = Set<String>()
         func eligible(_ d: SteamAppInfo.DepotInfo) -> Bool {
-            !d.isSharedInstall && d.dlcAppID == nil && d.supports(os: "windows") &&
+            !d.isSharedInstall && (d.dlcAppID.map { app.ownedDLC.contains($0) } ?? true) && d.supports(os: "windows") &&
                 !d.lowViolence && (d.language.isEmpty || d.language.lowercased() == "english")
         }
         var pending = app.depots.filter { eligible($0) && $0.publicManifestID == nil && $0.fromApp != nil }

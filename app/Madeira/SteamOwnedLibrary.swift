@@ -268,6 +268,7 @@ final class SteamOwnedLibrary: ObservableObject {
         let now = SteamSignIn.isSignedIn
         guard now != signedIn || (now && Self.accountKey(SteamSignIn.accountName) != cachedAccount) else { return }
         signedIn = now
+        fetcher.resetCaches()
         if !now {
             for id in Array(downloads.keys) { pause(id) }
             session.logoff()
@@ -300,6 +301,72 @@ final class SteamOwnedLibrary: ObservableObject {
     }
 
     // MARK: Library
+
+    struct DLC: Identifiable {
+        let id: Int
+        let name: String
+        let hasContent: Bool
+        let downloadable: Bool
+        let installed: Bool
+    }
+
+    private func preferenceKey(_ name: String, _ appID: Int) -> String {
+        "steam.\(Self.accountKey(SteamSignIn.accountName) ?? "signed-out").\(appID).\(name)"
+    }
+
+    /// Remember explicit DLC downloads across pause, restart, update and repair.
+    private func selectedDLC(_ appID: Int) -> Set<UInt32> {
+        if let saved = UserDefaults.standard.stringArray(forKey: preferenceKey("dlc", appID)) {
+            return Set(saved.compactMap(UInt32.init))
+        }
+        let installed = AppManifestWriter.installedDepots(appID: UInt32(appID), steamApps: Self.steamApps)
+        return Set(installed.compactMap { $0.dlcAppID.flatMap { UInt32(exactly: $0) } })
+    }
+
+    func loadDLC(_ appID: Int) async throws -> [DLC] {
+        let account = Self.accountKey(SteamSignIn.accountName)
+        guard signedIn, !inSession, gate.open else {
+            throw SteamFileError.invalid("Sign in to Steam and close the running game to check DLC.")
+        }
+        let (_, products) = try await fetcher.fetchDLC(appID: UInt32(appID))
+        let licensed = Set(products.map(\.appID))
+        guard let info = try await fetcher.fetchInstallInfo(appID: UInt32(appID), selectedDLC: Set(products.map(\.appID))) else {
+            throw SteamError.appInfoNotFound(UInt32(appID))
+        }
+        guard signedIn, account == Self.accountKey(SteamSignIn.accountName), !inSession, gate.open else { throw CancellationError() }
+        UserDefaults.standard.set(selectedDLC(appID).intersection(licensed).sorted().map(String.init),
+                                  forKey: preferenceKey("dlc", appID))
+        var record = AppManifestWriter.installedDepots(appID: UInt32(appID), steamApps: Self.steamApps)
+        for owner in Set(info.installDepots().compactMap(\.fromApp)).subtracting([UInt32(appID)]) {
+            record += AppManifestWriter.installedDepots(appID: owner, steamApps: Self.steamApps)
+        }
+        return products.map { product in
+            let depots = info.installDepots().filter { $0.dlcAppID == product.appID }
+            return DLC(id: Int(product.appID), name: product.name,
+                       hasContent: info.depots.contains { $0.dlcAppID == product.appID },
+                       downloadable: !depots.isEmpty,
+                       installed: !depots.isEmpty && depots.allSatisfy { depot in
+                           record.contains { $0.depotID == Int(depot.depotID) && $0.manifestGID == depot.publicManifestID }
+                       })
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func installDLC(_ ids: Set<UInt32>, for appID: Int) {
+        guard signedIn, !ids.isEmpty, downloads[appID] == nil else { return }
+        let selected = selectedDLC(appID).union(ids)
+        UserDefaults.standard.set(selected.sorted().map(String.init), forKey: preferenceKey("dlc", appID))
+        install(appID)
+    }
+
+    func keepsLocalCloudSaves(_ appID: Int) -> Bool {
+        UserDefaults.standard.object(forKey: preferenceKey("keep-local", appID)) as? Bool ?? true
+    }
+
+    func setKeepsLocalCloudSaves(_ appID: Int, _ keep: Bool) {
+        UserDefaults.standard.set(keep, forKey: preferenceKey("keep-local", appID))
+        objectWillChange.send()
+        Task { await syncCloud(appID) }
+    }
 
     /// `interactive` refreshes (sign-in, the Refresh button) tell the user
     /// about failures; the automatic one only logs transient ones, so an
@@ -526,7 +593,7 @@ final class SteamOwnedLibrary: ObservableObject {
                 return (audit, elsewhere)
             }.value
             let audit = result.0
-            let plan = SteamCloudPlan.make(audit: audit, baseline: baseline(appID))
+            let plan = SteamCloudPlan.make(audit: audit, baseline: baseline(appID), keepLocal: keepsLocalCloudSaves(appID))
             recordBaseline(appID, settled: plan.settled)
             state.audit = audit; state.conflicts = plan.conflicts; state.checked = Date(); state.phase = .ready
             cloud[appID] = state
@@ -1048,7 +1115,7 @@ final class SteamOwnedLibrary: ObservableObject {
     private func run(_ appID: Int) async {
         var outcome = SteamDownloadBackground.Outcome.paused
         do {
-            guard let info = try await fetcher.fetchInstallInfo(appID: UInt32(appID)) else {
+            guard let info = try await fetcher.fetchInstallInfo(appID: UInt32(appID), selectedDLC: selectedDLC(appID)) else {
                 throw SteamError.appInfoNotFound(UInt32(appID))
             }
             try FileManager.default.createDirectory(at: SteamInstallPaths.common(drive: Self.drive), withIntermediateDirectories: true)

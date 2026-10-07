@@ -509,7 +509,7 @@ struct SteamCloudPlan: Equatable, Sendable {
 
     /// `baseline`: SHA-1 (hex) of each file when it was last the same on both
     /// sides, or a mark, by `SteamCloudEntry.key`.
-    static func make(audit: SteamCloudAudit, baseline: [String: String]) -> SteamCloudPlan {
+    static func make(audit: SteamCloudAudit, baseline: [String: String], keepLocal: Bool = false) -> SteamCloudPlan {
         var plan = SteamCloudPlan()
         for entry in audit.entries {
             let known = baseline[entry.key]
@@ -518,6 +518,10 @@ struct SteamCloudPlan: Equatable, Sendable {
             case .same:
                 plan.settled[entry.key] = hex(entry.cloudSHA)
             case .differ:
+                if keepLocal {
+                    plan.upload.append(entry)
+                    continue
+                }
                 // A save that was missing here and is back is a new file, not a
                 // change of the synced one: never copied over the cloud's unasked.
                 let cloud = hex(entry.cloudSHA), local = hex(entry.localSHA)
@@ -526,6 +530,11 @@ struct SteamCloudPlan: Equatable, Sendable {
                 else { plan.conflicts.append(entry) }
             case .cloudOnly:
                 let cloud = hex(entry.cloudSHA)
+                if keepLocal, known != nil {
+                    // A local deletion stays deleted; never delete the cloud copy.
+                    plan.settled[entry.key] = deletedMark + cloud
+                    continue
+                }
                 if known == nil {
                     plan.download.append(entry)          // new in the cloud
                 } else if known == deletedMark + cloud {
@@ -542,7 +551,7 @@ struct SteamCloudPlan: Equatable, Sendable {
             case .localOnly:
                 // New on this device. A file the cloud once had and no longer has was
                 // deleted elsewhere: it is not sent back.
-                if known == nil, !entry.localSHA.isEmpty { plan.upload.append(entry) }
+                if (known == nil || keepLocal), !entry.localSHA.isEmpty { plan.upload.append(entry) }
             }
         }
         return plan

@@ -25,6 +25,19 @@ import Foundation
 /// "update" it on first launch.
 struct AppManifestWriter {
 
+    static func installedDepots(appID: UInt32, steamApps: URL) -> [InstalledDepot] {
+        let url = steamApps.appendingPathComponent("appmanifest_\(appID).acf")
+        guard let data = try? Data(contentsOf: url), data.count <= 1 << 20,
+              var parser = try? SteamKeyValues(data), let root = try? parser.read(),
+              let record = root["AppState"], record["appid"]?.string == String(appID) else { return [] }
+        return (record["InstalledDepots"]?.fields ?? [:]).compactMap { key, value in
+            guard let id = Int(key), id > 0 else { return nil }
+            return InstalledDepot(depotID: id, manifestGID: value["manifest"]?.string.flatMap(UInt64.init),
+                                  size: value["size"]?.string.flatMap(Int64.init),
+                                  dlcAppID: value["dlcappid"]?.string.flatMap(Int.init))
+        }
+    }
+
     /// Writes `appmanifest_<appid>.acf` into a Steam library folder
     /// (`steamAppsPath`). `installedDepots` is what Steam trusts as a complete
     /// install. `buildID` is the depot build id from PICS (0 if unknown; Steam

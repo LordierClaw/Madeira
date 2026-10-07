@@ -119,7 +119,7 @@ final class DepotDownloader {
                 // include is content this account does not own (another
                 // edition, extra content): it is left out. Any other refusal
                 // still fails.
-                if let owned = await ownedDepots(), !owned.isEmpty, !owned.contains(refused) {
+                if depot.dlcAppID == nil, let owned = await ownedDepots(), !owned.isEmpty, !owned.contains(refused) {
                     licenseSkipped.append(refused)
                     continue
                 }
@@ -208,7 +208,8 @@ final class DepotDownloader {
         report(state)
         let installed = plans.map { plan in
             AppManifestWriter.InstalledDepot(depotID: Int(plan.depotID), manifestGID: plan.manifestGID,
-                                             size: Int64(plan.manifest.totalUncompressedSize))
+                                             size: Int64(plan.manifest.totalUncompressedSize),
+                                             dlcAppID: depots.first { $0.depotID == plan.depotID }?.dlcAppID.map(Int.init))
         }
         // Depots taken from another app are that app's content. Valve's client
         // refuses a launch until the owner app has its own record, so both
@@ -294,6 +295,19 @@ final class DepotDownloader {
         let fm = FileManager.default
         var result = Prepared()
         var folded: [String: String] = [:]   // lowercased relative dir -> first spelling
+        // DLC can overlay a base-game path. A journal from the base depot
+        // cannot verify the DLC's bytes. Reject ambiguous overlays before any
+        // files are resized; silently writing both could corrupt the install.
+        var fileOwners: [String: UInt32] = [:]
+        for plan in plans {
+            for file in plan.manifest.files where !file.isDirectory && file.flags & 0x200 == 0 {
+                guard let path = SteamInstallFiles.safeRelativePath(file.filename, folded: &folded) else { continue }
+                if let owner = fileOwners[path.lowercased()], owner != plan.depotID {
+                    throw SteamError.chunkDownloadFailed("Two depots contain the same file. Install this content with the Steam client; Madeira has left the game files unchanged.")
+                }
+                fileOwners[path.lowercased()] = plan.depotID
+            }
+        }
         let journalNames = Set(plans.map { "depot_\($0.depotID)_\($0.manifestGID).journal" })
         // A journal for an older manifest describes different file contents.
         for name in (try? fm.contentsOfDirectory(atPath: journalDir.path)) ?? [] where !journalNames.contains(name) {

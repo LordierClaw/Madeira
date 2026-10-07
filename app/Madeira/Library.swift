@@ -2027,7 +2027,7 @@ struct LibraryView: View {
                 Section("Pointer") { LibraryPointerSettings() }
             }
             if MadeiraConfig.flag("MADEIRA_RUNTIME_SETTINGS") {
-                if settingsShow("display", "refresh", "rate", "ProMotion", "120 Hz") { DisplayRateSettings() }
+                if settingsShow("display", "refresh", "rate", "ProMotion", "120 Hz", "landscape", "orientation", "rotation") { DisplayRateSettings() }
                 if settingsShow("memory", "JIT pool", "pool", "video memory", "VRAM", "swap", "coverage", "madsync", "sync", "eco", "all settings") {
                     RuntimeMemorySyncSettings(open: { settingsSheet = $0 }, refresh: settingsRefresh)
                 }
@@ -2759,9 +2759,17 @@ struct FPSChoice: View {
 /// Applies from the next session start or FPS limit change.
 struct DisplayRateSettings: View {
     @State private var hold = ProMotionIntent.holdMaximum
+    @ObservedObject private var orientation = MadeiraOrientation.shared
 
     var body: some View {
         Section {
+            Toggle("Always use landscape", isOn: $orientation.forceLandscape)
+            Text("Opens Madeira in landscape, including when iPhone Portrait Orientation Lock is on. Applies immediately and is remembered for the next launch.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let problem = orientation.problem {
+                Text(problem).font(.caption).foregroundStyle(.orange)
+                Button("Try rotating again") { orientation.apply() }
+            }
             Toggle("Hold the display at its maximum rate", isOn: Binding(get: { hold }, set: { on in
                 hold = on
                 MadeiraConfig.set("env.MADEIRA_PROMOTE", on ? "1" : nil)

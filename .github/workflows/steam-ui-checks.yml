@@ -1,0 +1,50 @@
+name: Steam and UI checks
+on:
+  push:
+    branches: [ui-ux]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  downloads:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /app/Madeira/*.swift
+            /app/Madeira/*.h
+            /app/Madeira/Info.plist
+            /app/Madeira/SwiftSteam/
+            /app/Madeira.xcodeproj/project.pbxproj
+            /tests/host/
+            /LICENSES/
+            /THIRD-PARTY-NOTICES.md
+      - name: Host dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang libssl-dev liblzma-dev zlib1g-dev
+          swiftc --version
+      - name: Download, DLC, resume and ownership fixtures
+        env:
+          CC: clang
+        run: python3 tests/host/check-steam-library.py
+  cloud-and-ui:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /app/Madeira/*.swift
+            /app/Madeira/SwiftSteam/
+            /tests/host/
+      - name: Cloud decisions
+        run: python3 tests/host/check-steam-cloud.py
+      - name: Parse app Swift sources
+        run: find app/Madeira -name '*.swift' -print0 | xargs -0 xcrun swiftc -frontend -parse
+      - name: Typecheck changed UI against the iOS SDK
+        run: python3 tests/host/check-steam-ui.py
