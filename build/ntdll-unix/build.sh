@@ -11,6 +11,17 @@ APP_LIB="$REPO_ROOT/app/Madeira/libntdll_unix.a"
 
 mkdir -p "$OBJ_DIR"
 
+# The SDK's rusage_info_v6 layout differs across Xcode releases. This field is
+# only a performance-log metric; detect it instead of assuming an SDK version.
+SDK_FEATURE_FLAGS=()
+if printf '#include <sys/resource.h>\nvoid probe(struct rusage_info_v6 *r) { (void)r->ri_page_wait_time_mach; }\n' | \
+   xcrun -sdk iphoneos clang -arch arm64 -isysroot "$SDK" -miphoneos-version-min=17.0 \
+       -x c -fsyntax-only - > /dev/null 2> "$OBJ_DIR/rusage-page-wait-probe.log"; then
+    SDK_FEATURE_FLAGS+=(-DMADEIRA_HAVE_RUSAGE_PAGE_WAIT=1)
+else
+    echo 'SDK has no rusage page-wait metric; pgw=-1 in diagnostics means unavailable'
+fi
+
 SUCCEEDED=0
 FAILED=0
 FAILED_FILES=""
@@ -36,6 +47,7 @@ compile_one() {
         -DWINE_UNIX_LIB -DWINE_IOS=1 \
         -Dget_thread_context=ntdll_get_thread_context \
         -Dset_thread_context=ntdll_set_thread_context \
+        "${SDK_FEATURE_FLAGS[@]}" \
         -c "$src" -o "$OBJ_DIR/$name.o" 2>"$OBJ_DIR/$name.err"; then
         echo "OK"
         SUCCEEDED=$((SUCCEEDED + 1))
@@ -208,6 +220,10 @@ echo ""
 echo "Results: $SUCCEEDED succeeded, $FAILED failed"
 if [ -n "$FAILED_FILES" ]; then
     echo "Failed:$FAILED_FILES"
+fi
+if [ "$FAILED" -gt 0 ]; then
+    echo "Not archiving failed or stale objects; see $OBJ_DIR/*.err" >&2
+    exit 1
 fi
 
 echo ""
