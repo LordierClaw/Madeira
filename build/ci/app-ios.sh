@@ -26,6 +26,9 @@ app)
         CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER:-1}" build 2>&1 | tee outputs/xcodebuild.log
     APP=outputs/DerivedData/Build/Products/Debug-iphoneos/Madeira.app
     test -x "$APP/Madeira"
+    # Build receipts travel with the app and the final local IPA.
+    cp -R app/Madeira/build-info "$APP/"
+    test -f "$APP/gl/build-info.json"
     # An ad-hoc signature carries the source entitlements for the sideloader to
     # preserve, especially get-task-allow, which both JIT methods require.
     # No Apple account, certificate or provisioning profile is used here.

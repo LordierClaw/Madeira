@@ -61,6 +61,8 @@ app/Madeira/compat/love/lua51.dll
 app/Madeira/compat/love/*.version
 app/Madeira/gl/*.dylib
 app/Madeira/gl/*.version
+app/Madeira/gl/build-info.json
+app/Madeira/build-info/
 app/Madeira/licenses/LuaJIT-MIT.txt
 app/Madeira/licenses/Mesa-license.rst
 app/Madeira/licenses/MoltenVK-Apache-2.0.txt

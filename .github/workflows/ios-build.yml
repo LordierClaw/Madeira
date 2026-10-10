@@ -20,6 +20,27 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
   HOMEBREW_NO_AUTO_UPDATE: '1'
 jobs:
+  graphics:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: graphics-cache
+        with:
+          path: outputs/graphics-ios.tar.gz
+          key: graphics-xcode26.3-v1-${{ hashFiles('build/ci/graphics-ios.sh', 'build/mesa-ios/**', 'build/moltenvk-ios/**') }}
+      - name: Build Mesa and MoltenVK for iOS
+        if: steps.graphics-cache.outputs.cache-hit != 'true'
+        run: bash build/ci/graphics-ios.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graphics-ios
+          path: outputs/graphics-ios.tar.gz
+          retention-days: 7
+          compression-level: 0
   llvm:
     if: inputs.llvm_run == ''
     runs-on: macos-15
@@ -194,8 +215,8 @@ jobs:
           path: build/dxmt-ios/obj/*.err
           retention-days: 7
   app:
-    needs: [dxmt, runtime]
-    if: always() && (needs.runtime.result == 'success' || inputs.native_run != '') && needs.dxmt.result == 'success'
+    needs: [dxmt, runtime, graphics]
+    if: always() && (needs.runtime.result == 'success' || inputs.native_run != '') && needs.dxmt.result == 'success' && needs.graphics.result == 'success'
     # The bundled StikJIT module uses Swift 6.4's qualified-name syntax.
     # Keep the native dependencies on their verified 26.3 toolchain; Swift and
     # the final linker need Xcode 27 to consume that framework's interface.
@@ -221,11 +242,17 @@ jobs:
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN" --jq .head_sha)
           git fetch --depth=1 origin "$sha"
-          git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/ci/fex-native-diagnostics.h build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/hidpad build/wine-pe build/madeira-dock build/madeira_cfg.h
+          git diff --exit-code "$sha" HEAD -- FEX wine dxmt madeira-dock build/ci/runtime-ios.sh build/ci/pe-refresh.sh build/ci/fex-native-diagnostics.h build/fex-ios build/fex-arm64ec build/fex-wow64 build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/hidpad build/wine-pe build/wine-i386 build/luajit-x64 build/madeira-d3d12 madeira-d3d12/src build/madeira-dock build/madeira_cfg.h
       - name: Restore libraries
         run: |
           git submodule update --init --depth 1 FEX
           tar -xzf outputs/dependencies/native-ios.tar.gz
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: graphics-ios
+          path: outputs/dependencies
+      - name: Restore fresh OpenGL plugins and licenses
+        run: tar -xzf outputs/dependencies/graphics-ios.tar.gz
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dxmt-ios
