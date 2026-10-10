@@ -91,10 +91,11 @@ jobs:
                     'image-reload', 'kmt-adapter', 'stale-heal-owner', 'audio-downmix',
                     'audio-wow64', 'd3d12-tiled']
           failed = []
-          for check in checks + ['data-exports', 'input-queue']:
+          # DataFix's Windows harness is run on the Windows development host.
+          for check in checks + ['input-queue']:
               print(f'::group::{check}', flush=True)
               command = [sys.executable, f'tests/host/check-{check}.py']
-              if check in ['data-exports', 'input-queue']: command += ['--cc', 'clang']
+              if check == 'input-queue': command += ['--cc', 'clang']
               if subprocess.run(command).returncode: failed.append(check)
               print('::endgroup::', flush=True)
           if failed: sys.exit('Failed: ' + ', '.join(failed))
