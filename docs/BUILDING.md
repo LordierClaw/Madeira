@@ -73,6 +73,15 @@ implementations (`msvcp140.dll`, `vcruntime140.dll`) are retained. This is not
 a rebuild of every inherited PE module or graphics plugin. Keep these local
 inputs and outputs outside commits and CI uploads.
 
+The 2026-10-10 c-gow merge adds Mesa patches 0005-0007 and XAudio2 2.8/2.9.
+The native Wine job now builds both XAudio2 versions from Wine/FAudio source.
+Mesa/MoltenVK still require the separate scripts below: the native CI does not
+build `gl/`, and the local packager takes it from the compatibility IPA.
+Rebuild the plugins and refresh that explicitly supplied input before packaging
+an IPA that claims the new Mesa fixes. Old compatibility plugins do not acquire
+these fixes by rebuilding the Madeira app. See [FORK.md](FORK.md) for the
+experimental thin-reservation default and source-check evidence.
+
 The packager checks ZIP integrity and all member hashes, new UI/input markers,
 loader alignment/padding and the DataFix markers, then writes an IPA checksum
 and provenance manifest. CI ad-hoc-signs the native app with its JIT

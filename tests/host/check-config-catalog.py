@@ -14,6 +14,7 @@ lib = open(os.path.join(R, "app/Madeira/Library.swift")).read()
 gen = open(os.path.join(R, "app/Madeira/ConfigCatalog.generated.swift")).read()
 ok = rc == 0
 for what, cond in [
+    ("catalog source paths are portable across Windows and POSIX", all('\\' not in paths for paths in re.findall(r'sources: \[(.*?)\]', gen))),
     ("swap sizes include 3072", "swapChoices = [0, 1024, 2048, 3072, 4096]" in lib),
     ("coverage picker: large-only default, blocks, wide", '("", "Large allocations (8 MB+)")' in lib and '("blocks"' in lib and '("wide"' in lib),
     ("JIT pool and video memory pickers in Memory & sync", 'key: "pool"' in lib and 'key: "vram-mb"' in lib),

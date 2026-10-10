@@ -56,6 +56,51 @@ does not claim a full native build, a new IPA or physical-device validation.
 The next native build must rebuild its runtime dependencies (leave `native_run`
 empty); the build 17 dependency artifacts do not match these new pins.
 
+## OpenGL fork integration, 2026-10-10
+
+After the main upstream integration, `ui-ux` also merges
+[c-gow/Madeira at e711351](https://github.com/c-gow/Madeira/commit/e7113515c455a48df5fa5bcce4ebfdeaaf04f152).
+`backup/pre-cgow-2026-10-10` retains our preceding tip. Existing input, DragFix,
+DLC/progress, Cloud keep-local and playing-only landscape fixes are preserved.
+The Wine pin remains `2233aa82`: its existing OpenGL implementation matches
+the imported patch (reverse-apply check excluding the license context passes).
+The updated patch only moves its license hunk to the new upstream context;
+do not apply it again to this fork's Wine.
+
+- Mesa patches 0005-0007 handle MoltenVK triangle fans, GLSL variable names
+  colliding with Metal types, depth clamp, and unsupported overflow queries.
+- OpenGL contributes to the common frame counter, so FPS and first-frame
+  launch checks can see both GL backends. These are submitted command buffers,
+  not evidence of GPU completion or changing image contents.
+- Audio requests a 5 ms I/O period before activating the session, with
+  `MADEIRA_AUDIO_IO_MS` override. This may help short-buffer audio clients;
+  the Darkest Dungeon voice issue still needs device confirmation.
+- XAudio2 2.8/2.9 source builds and FAudio notices are included. The native CI
+  recipe builds and carries both DLLs using Wine's bundled FAudio.
+
+The imported thin-reservation workaround is **off by default in our fork**.
+It reports 1-2 GB reservations backed by small heads whose logical tails
+overlap, so sparse access can reach another allocation. `MADEIRA_THIN_RESERVE=1`
+is an experimental opt-in only for a separately tested game. We serialize
+configuration initialization with `virtual_mutex` (avoiding partially initialized
+geometry on concurrent first allocations), and reject zero-length or out-of-range
+tail decommits through the normal VM error path. This does not make overlapping
+reservations equivalent to Windows allocation semantics.
+
+Local checks: DataFix 17 cases, input queue 51 checks, thin-reservation admission,
+initialization and tail bounds 14 cases, and configuration catalog pass. The
+thin harness extracts production functions and mocks VM calls; it does not
+validate the experimental allocator on iOS. Both imported x64 probe sources
+compile. All seven Mesa patches apply in order to checksum-verified Mesa 25.0.7.
+
+No inherited binary is changed and none of c-gow's new DLL/EXE payloads is added.
+This is source integration, not a new native app or IPA. Mesa/MoltenVK must be
+rebuilt via their documented scripts to ship the new renderer fixes. The current
+native CI does not build these plugins, and the local packager overlays `gl/`
+from its explicit compatibility IPA; an old compatibility IPA therefore still
+supplies old Mesa. Refresh that input with rebuilt plugins (or update the
+packaging path to take fresh plugins) before claiming those fixes in an IPA.
+
 ## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable

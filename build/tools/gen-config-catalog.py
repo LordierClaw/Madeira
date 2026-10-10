@@ -43,6 +43,8 @@ INT_READERS = {"madeira_cfg_int", "mad_cfg_int_pe"}
 # Titles, kinds and fixed choices for options with a dedicated Settings row.
 # "choices" are (value, label); the empty value means "remove the key".
 OVERLAY = {
+    "env.MADEIRA_THIN_RESERVE": {"title": "Experimental thin reservations", "kind": "bool", "default": "0",
+                "note": "Off by default in this fork. 1 enables overlapping reservation tails, which can alias another allocation's memory. Use only with a game verified to stay within each reservation's head."},
     "swap-mb": { "note": "Moves game data to a file on this device's storage when memory runs short, up to this size. Off by default; read at launch.", "category": "Memory & JIT pool","title": "Swap tier size", "kind": "choice",
                 "choices": [("", "Off"), ("1024", "1 GB"), ("2048", "2 GB"), ("3072", "3 GB"), ("4096", "4 GB")]},
     "env.MADEIRA_SWAP_COVERAGE": {"category": "Memory & JIT pool", "note": "Which allocations the swap tier backs with its file (only when the tier is on). Large allocations (classic, the default): single 8 MB+ commits in the guest band. All allocations of 1 MB+ (blocks). 1 MB+ and overflow (wide): blocks plus allocations outside the band and fresh reservations. Whole reservations 4 MB+ (broad, ml1257): every new reservation of at least swap-min-mb (4 MB) below FEX's band backed whole when made, holes punched on decommit, swap-mb caps the disk it uses (a soft cap, checked when a block is backed). Unset: broad if swap-mode = 2, else classic.", "title": "Swap tier coverage", "kind": "choice",
@@ -201,11 +203,11 @@ def scan():
         out = subprocess.run(["git", "-C", base, "ls-files", "--"] + dirs,
                              capture_output=True, text=True).stdout.split()
         for rel in out:
-            path = os.path.normpath(os.path.join(repo, rel))
+            path = os.path.normpath(os.path.join(repo, rel)).replace('\\', '/')
             if not path.endswith(EXT) or any(s in path for s in SKIP):
                 continue
             try:
-                txt = open(os.path.join(ROOT, path), errors="ignore").read()
+                txt = open(os.path.join(ROOT, path), encoding="utf-8", errors="ignore").read()
             except OSError:
                 continue
             lines = txt.split("\n")
@@ -273,13 +275,14 @@ def render(opts):
 def main():
     text = render(scan())
     if "--check" in sys.argv:
-        cur = open(OUT).read() if os.path.exists(OUT) else ""
+        cur = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""
         if cur != text:
             print("ConfigCatalog.generated.swift is out of date: run build/tools/gen-config-catalog.py")
             return 1
         print("ConfigCatalog.generated.swift is current")
         return 0
-    open(OUT, "w").write(text)
+    with open(OUT, "w", encoding="utf-8", newline="\n") as output:
+        output.write(text)
     print(f"wrote {OUT}")
     return 0
 

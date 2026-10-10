@@ -73,9 +73,10 @@ PY
     # Upstream's XInput and Mono changes also live in PE modules; rebuilding
     # only ntdll would silently keep the old controller and managed-runtime code.
     WINE_BUILD_DIR="$ROOT/wine/build-macos" JOBS=3 bash build/wine-pe/build-modules.sh \
-        kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap
+        kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap xaudio2_8 xaudio2_9
+    # XAudio2 2.8/2.9 above use Wine's bundled FAudio, not Microsoft DLLs.
     # Track exactly the rebuilt PE inputs carried to the separate app job.
-    printf '%s\n' kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap \
+    printf '%s\n' kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap xaudio2_8 xaudio2_9 \
         | sed 's|^|app/Madeira/arm64ec-windows/|; s|$|.dll|' > outputs/rebuilt-wine-pe.txt
     bash build/madeira-dock/build.sh
     ;;
