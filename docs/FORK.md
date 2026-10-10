@@ -5,6 +5,12 @@ and its Wine submodule [LordierClaw/Madeira-wine](https://github.com/LordierClaw
 Madeira development uses `ui-ux`; Wine uses `madeira-fixes`. The inherited
 `main` and other upstream branches have not been overwritten. Future development belongs here.
 
+For the current dependency pins, preserved-difference map and next-update
+procedure, read [UPDATING.md](UPDATING.md) and
+[upstream-state.json](upstream-state.json). The integration sections below
+record the state at each merge; later build records supersede their build
+limitations without changing their device-validation status.
+
 ## Provenance
 
 - Madeira baseline: `willfaust/Madeira` at `4e9d45a74294cd820120791c4b3f2b79adf4fc70`.
@@ -97,13 +103,12 @@ compile. All seven Mesa patches apply in order to checksum-verified Mesa 25.0.7.
 passes all three jobs: Steam/DLC transfers, Cloud and Swift/iOS SDK checks,
 and runtime/input regressions, including the new thin-reservation host checks.
 
-No inherited binary is changed and none of c-gow's new DLL/EXE payloads is added.
-This is source integration, not a new native app or IPA. Mesa/MoltenVK must be
-rebuilt via their documented scripts to ship the new renderer fixes. The current
-native CI does not build these plugins, and the local packager overlays `gl/`
-from its explicit compatibility IPA; an old compatibility IPA therefore still
-supplies old Mesa. Refresh that input with rebuilt plugins (or update the
-packaging path to take fresh plugins) before claiming those fixes in an IPA.
+At merge commit `0998dcd`, no inherited binary was changed and none of c-gow's
+new DLL/EXE payloads was added. This was source integration only. The subsequent
+pipeline commits `0a89852`, `a25754c` and `bfe4319` add native graphics and
+updated PE builds, and require those fresh outputs when packaging. The
+compatibility IPA can no longer overwrite fresh OpenGL or rebuilt i386 modules.
+Build and package evidence is recorded in the update ledger and later sections.
 
 ## Fixes and evidence as of 2026-10-07
 

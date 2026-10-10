@@ -1,6 +1,6 @@
 # Working on this fork
 
-- This is the maintained checkout of `LordierClaw/Madeira`, branch `madeira-fixes`.
+- This is the maintained checkout of `LordierClaw/Madeira`, branch `ui-ux`.
   `origin` is our fork; `upstream` is `willfaust/Madeira`; `c-gow` is an OpenGL reference.
 - Wine changes belong in the `wine` submodule, `LordierClaw/Madeira-wine`, branch
   `madeira-fixes`. Commit and push Wine first, then commit the parent gitlink.
@@ -11,7 +11,8 @@
   tracked binaries are inherited; do not update them in this source-only workflow.
 - Enable the repository hooks with `git config core.hooksPath .githooks`.
   Run `python tools/check-source-commit.py --staged` before every commit.
-- Read `docs/FORK.md` for provenance, rebuilding and validation status.
+- Read `docs/FORK.md`, `docs/UPDATING.md` and `docs/upstream-state.json` for
+  provenance, preserved fork differences, source pins and the next update process.
   Mouse ClickFix was confirmed on iPhone; keyboard ClickKeyFix still needs device
   confirmation. Controller and minor voice-audio issues remain under investigation.
 - Diagnose input at the relevant layer before changing behavior. Do not enable

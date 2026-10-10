@@ -1,4 +1,9 @@
-# Fork build workflow (2026-10-07)
+# Fork build workflow (updated 2026-10-10)
+
+Use [UPDATING.md](UPDATING.md) and [upstream-state.json](upstream-state.json)
+for the maintained source pins, fork differences and update checklist. The
+build records below preserve the earlier IPA history; the current workflow
+also builds graphics and the refreshed PE set described below.
 
 [Native app build passed](https://github.com/LordierClaw/Madeira/actions/runs/37581572994) for source commit
 `dbcd1cef656db048de9dfc27ec6b37b99a71ea42`. LLVM and native dependencies came
@@ -66,25 +71,35 @@ python3 tools/package-local-ipa.py \
   --output /path/to/Madeira-UIUX.ipa
 ```
 
-That local overlay contributes only the OpenGL plugins, i386 Wine farm and
-previously verified VC runtime files. The fresh native app, JIT helper, Wine
-loader and input queue remain from this build. The two Wine ARM64EC runtime
-implementations (`msvcp140.dll`, `vcruntime140.dll`) are retained. This is not
-a rebuild of every inherited PE module or graphics plugin. Keep these local
-inputs and outputs outside commits and CI uploads.
+That local overlay contributes unchanged i386 Wine modules and previously
+verified VC runtime files. The native archive supplies the app, JIT helper,
+fresh graphics and rebuilt PE modules; rebuilt i386 files take precedence.
+The two Wine ARM64EC runtime implementations (`msvcp140.dll`,
+`vcruntime140.dll`) are retained. Other unchanged inherited modules remain,
+so this is not a rebuild of every DLL. Keep local compatibility inputs and
+the final IPA outside commits and CI uploads.
 
-The 2026-10-10 c-gow merge adds Mesa patches 0005-0007 and XAudio2 2.8/2.9.
-The native Wine job now builds both XAudio2 versions from Wine/FAudio source.
-Mesa/MoltenVK still require the separate scripts below: the native CI does not
-build `gl/`, and the local packager takes it from the compatibility IPA.
-Rebuild the plugins and refresh that explicitly supplied input before packaging
-an IPA that claims the new Mesa fixes. Old compatibility plugins do not acquire
-these fixes by rebuilding the Madeira app. See [FORK.md](FORK.md) for the
-experimental thin-reservation default and source-check evidence.
+The 2026-10-10 pipeline adds `build/ci/graphics-ios.sh`: checksum-pinned Mesa
+25.0.7 with all seven patches and MoltenVK 1.4.2. Its cache includes all
+graphics recipes/patches in its key. `build/ci/pe-refresh.sh` rebuilds the
+updated ARM64EC Wine builtins/XAudio2, FEX ARM64EC/WoW64, WoW64 native DLLs,
+changed Wine i386 modules, DXMT PE, D3D12 and LuaJIT GC64. Exact mandatory
+outputs are in `docs/upstream-state.json`; the runtime receipt lists actual
+outputs and hashes. OpenGL is never taken from the compatibility IPA.
+
+The FEX ARM64EC adapter must select `FEX_IOS_HOST_BUILD` and the
+`FEX_IOS_HOST` C/C++/ASM defines. CPU tuning uses generic/none rather than a
+Linux `/proc/cpuinfo` probe. DXMT's cross file requires the documented
+`dxmt/toolchains` symlink. These are parent build adapters; FEX source is
+unchanged. See [FORK.md](FORK.md) for thin reservations, which remain off.
 
 The packager checks ZIP integrity and all member hashes, new UI/input markers,
-loader alignment/padding and the DataFix markers, then writes an IPA checksum
-and provenance manifest. CI ad-hoc-signs the native app with its JIT
+loader alignment/padding and DataFix markers, required rebuilt outputs and
+their pins, graphics patches, app source commit and signed plugin hashes.
+`tools/build-receipts.py` verifies unsigned graphics before Xcode uses them
+and records signed hashes after signing. The packager writes an IPA checksum
+and provenance manifest; its ten synthetic archive tests run in host CI.
+CI ad-hoc-signs the native app with its JIT
 entitlements; the local overlay invalidates the resource seal. Re-sign the
 final IPA through the usual sideload tool. No Apple signing identity or
 provisioning profile is included. Successful compilation does not establish
