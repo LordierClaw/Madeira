@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Package a freshly built native app with explicitly supplied local runtimes.
 
-The compatibility IPA supplies only the OpenGL plugins, i386 PE farm, and the
-previously verified Microsoft runtime. Its native app and loader are never used.
+The compatibility IPA supplies unchanged i386 PE modules and the previously
+verified Microsoft runtime. Fresh native OpenGL and rebuilt PE modules win.
 Neither input nor the resulting IPA belongs in Git.
 """
 import argparse
@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import plistlib
+import re
 import struct
 import tarfile
 import zipfile
@@ -34,6 +35,8 @@ def file_digest(path):
 
 
 def main():
+    if not __debug__:
+        raise SystemExit('Do not disable package validation with Python optimization')
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--native-app', type=Path, required=True)
     ap.add_argument('--compat-ipa', type=Path, required=True)
@@ -60,14 +63,12 @@ def main():
             path = PurePosixPath(rel)
             if '..' in path.parts or '\\' in rel:
                 raise SystemExit('Invalid compatibility path')
-            if (rel.startswith(('gl/', 'i386-windows/'))
+            if (rel.startswith('i386-windows/')
                     or rel.startswith('x86_64-vcruntime/') and path.name in RUNTIMES
                     or rel.startswith('arm64ec-windows/') and path.name in RUNTIMES - KEEP_WINE_EC):
                 overlay[rel] = (compat.read(entry), (entry.external_attr >> 16) & 0o777 or 0o644)
         for name in RUNTIMES:
             assert 'x86_64-vcruntime/' + name in overlay, name
-        for name in ('libOSMesa.dylib', 'libMoltenVK.dylib'):
-            assert struct.unpack_from('<II', overlay['gl/' + name][0]) == (0xfeedfacf, 0x100000c)
         for name in RUNTIMES - KEEP_WINE_EC:
             assert overlay['x86_64-vcruntime/' + name][0] == overlay['arm64ec-windows/' + name][0]
 
@@ -104,6 +105,8 @@ def main():
                 continue
             data = native.extractfile(member).read()
             native_hashes[rel] = digest(data)
+            if rel.startswith('i386-windows/'):
+                overlay.pop(rel, None)
             if rel not in overlay:
                 write(rel, data, member.mode & 0o777)
         for rel, (data, mode) in sorted(overlay.items()):
@@ -134,6 +137,30 @@ def main():
         for name in KEEP_WINE_EC:
             assert expected['arm64ec-windows/' + name] == native_hashes['arm64ec-windows/' + name]
         assert PREFIX + 'PlugIns/MadeiraJITHelper.appex/Info.plist' in result.namelist()
+        for name in ('libOSMesa.dylib', 'libMoltenVK.dylib'):
+            rel = 'gl/' + name
+            assert expected[rel] == native_hashes[rel], 'Fresh graphics missing: ' + rel
+            assert struct.unpack_from('<II', result.read(PREFIX + rel)) == (0xfeedfacf, 0x100000c)
+        graphics = json.loads(result.read(PREFIX + 'gl/build-info.json'))
+        root = Path(__file__).resolve().parents[1]
+        state = json.loads((root / 'docs/upstream-state.json').read_text())
+        for key, value in state['graphics'].items():
+            assert graphics[key] == value, 'Unexpected graphics source: ' + key
+        assert re.fullmatch('[0-9a-f]{40}', graphics['source_commit'])
+        patches = root / 'build/mesa-ios/patches'
+        assert graphics['patches'] == {p.name: file_digest(p) for p in patches.glob('*.patch')}, 'Mesa patches differ from this checkout'
+        runtime = json.loads(result.read(PREFIX + 'build-info/runtime.json'))
+        assert runtime['pins'] == state['runtime_pins'], 'Unexpected runtime source pins'
+        assert re.fullmatch('[0-9a-f]{40}', runtime['source_commit'])
+        assert set(state['required_rebuilt_files']) <= runtime['rebuilt_files'].keys(), 'Incomplete runtime rebuild'
+        for rel, sha in runtime['rebuilt_files'].items():
+            assert expected[rel] == native_hashes[rel] == sha, 'Rebuilt file was changed or overwritten: ' + rel
+        app_receipt = json.loads(result.read(PREFIX + 'build-info/app.json'))
+        assert app_receipt['source_commit'] == args.source_commit, 'App source differs from requested commit'
+        assert app_receipt['graphics_receipt_sha256'] == expected['gl/build-info.json']
+        assert app_receipt['runtime_receipt_sha256'] == expected['build-info/runtime.json']
+        for name in ('libOSMesa.dylib', 'libMoltenVK.dylib'):
+            assert app_receipt['signed_plugins'][name] == expected['gl/' + name], 'Signed graphics changed: ' + name
     temporary.replace(args.output)
     manifest = {
         'source_commit': args.source_commit,
@@ -146,13 +173,17 @@ def main():
         'configuration': 'Debug; fresh native app, libraries and JIT helper',
         'native_code_preserved': True,
         'rebuilt_loader_preserved': True,
+        'graphics_build': graphics,
+        'graphics_final_sha256': {rel: expected[rel] for rel in expected if rel.startswith('gl/')},
+        'runtime_build': runtime,
+        'app_build': app_receipt,
         'local_compatibility_files': {rel: expected[rel] for rel in sorted(overlay)},
-        'validation': 'ZIP integrity, all file hashes, new UI strings, loader architecture/alignment/data-export fix; device check pending',
+        'validation': 'ZIP integrity, all file hashes, fresh graphics and patch receipts, rebuilt PE hashes, new UI strings, loader architecture/alignment/data-export fix; device check pending',
         'signing': 'Unsigned app; re-sign through the sideload tool before installing',
     }
-    args.output.with_suffix('.manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    args.output.with_suffix('.manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     args.output.with_suffix('.ipa.sha256').write_text(manifest['ipa_sha256'] + '  ' + args.output.name + '\n')
-    print(json.dumps({k: v for k, v in manifest.items() if k != 'local_compatibility_files'}, indent=2))
+    print(json.dumps({k: v for k, v in manifest.items() if k not in ('local_compatibility_files', 'runtime_build')}, indent=2))
 
 
 if __name__ == '__main__':

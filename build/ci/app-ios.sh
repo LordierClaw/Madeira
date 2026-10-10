@@ -20,6 +20,7 @@ app)
     git -C FEX submodule update --init --depth 1 External/fmt External/range-v3 External/unordered_dense
     mkdir -p app/Madeira/x86_64-vcruntime app/Madeira/i386-windows
     bash build/stage-licenses.sh
+    python3 tools/build-receipts.py unsigned app/Madeira
     xcodebuild -project app/Madeira.xcodeproj -scheme Madeira -configuration Debug \
         -destination 'generic/platform=iOS' -derivedDataPath outputs/DerivedData \
         CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
@@ -33,6 +34,7 @@ app)
     # preserve, especially get-task-allow, which both JIT methods require.
     # No Apple account, certificate or provisioning profile is used here.
     find "$APP" -type f -name '*.dylib' -exec codesign --force --sign - --timestamp=none {} \;
+    python3 tools/build-receipts.py signed "$APP"
     codesign --force --sign - --timestamp=none "$APP/Frameworks/StikJIT.framework"
     codesign --force --sign - --timestamp=none "$APP/PlugIns/MadeiraJITHelper.appex"
     codesign --force --sign - --timestamp=none --entitlements app/Madeira/Madeira.entitlements "$APP"

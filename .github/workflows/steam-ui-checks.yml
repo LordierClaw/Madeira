@@ -8,6 +8,9 @@ on:
       - 'app/Madeira.xcodeproj/**'
       - 'app/Madeira/Info.plist'
       - 'tests/host/**'
+      - 'tools/package-local-ipa.py'
+      - 'tools/build-receipts.py'
+      - 'docs/upstream-state.json'
       - 'build/**'
       - 'app/Madeira/Winios/**'
       - 'wine'
@@ -52,6 +55,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Cloud decisions
         run: python3 tests/host/check-steam-cloud.py
+      - name: Native and compatibility archive precedence
+        run: python3 tests/host/check-local-package.py
       - name: Parse app Swift sources
         run: find app/Madeira -name '*.swift' -print0 | xargs -0 xcrun swiftc -frontend -parse
       - name: Orientation session transitions
