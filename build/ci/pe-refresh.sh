@@ -42,6 +42,8 @@ JOBS=3 SKIP_DXMT=1 bash build/wine-i386/build.sh ntdll kernelbase mscoree win32u
     xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap
 find app/Madeira/i386-windows -type f ! -name .gitkeep >> outputs/rebuilt-wine-pe.txt
 
+# The cross file resolves @GLOBAL_SOURCE_ROOT@ inside dxmt, not this checkout.
+test -e dxmt/toolchains || ln -s ../toolchains dxmt/toolchains
 SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" meson setup dxmt/build-arm64ec dxmt \
     --cross-file=dxmt/build-arm64ec-win.txt --native-file=dxmt/build-osx.txt \
     --buildtype=release -Dwine_build_path="$ROOT/wine/build-macos" -Dwine_builtin_dll=true -Denable_nvapi=true
