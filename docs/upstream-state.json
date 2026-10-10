@@ -83,5 +83,17 @@
     "i386-windows/xinput1_4.dll",
     "i386-windows/xinput9_1_0.dll",
     "i386-windows/xinputuap.dll"
-  ]
+  ],
+  "latest_build": {
+    "source_commit": "283ecb913804f223a8d5214f7ac4587125a7e523",
+    "native_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38034074592",
+    "host_checks_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38032867939",
+    "version": "0.1.3",
+    "build": "22",
+    "ipa": "Madeira-0.1.3-Upstream-OpenGL.ipa",
+    "ipa_bytes": 159096870,
+    "ipa_sha256": "a0b09734d864a5bff28f2c8ac7600c24da43647abe3dca8dece5d712b86b11c8",
+    "device_validation": "pending",
+    "local_only": true
+  }
 }

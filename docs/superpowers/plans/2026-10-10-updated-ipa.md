@@ -16,16 +16,16 @@ Microsoft runtimes only. Keep generated payloads outside Git.
 
 ## Tasks and completion contract
 
-- [ ] Pin and build Mesa 25.0.7 plus all seven patches and MoltenVK 1.4.2;
+- [x] Pin and build Mesa 25.0.7 plus all seven patches and MoltenVK 1.4.2;
   preserve source/hash metadata and licenses. Native CI must succeed.
-- [ ] Rebuild the updated Wine modules, FEX PE modules, DXMT PE and native D3D12;
+- [x] Rebuild the updated Wine modules, FEX PE modules, DXMT PE and native D3D12;
   list exact rebuilt outputs. Preserve unchanged compatibility files explicitly.
 - [x] Test and change the packager so fresh graphics and PE outputs cannot be
   overwritten by the old compatibility IPA; fail if required fresh graphics are
   missing. Validate package member hashes and provenance.
-- [ ] Run fresh native app/JIT helper build and host regressions. Resolve actual
+- [x] Run fresh native app/JIT helper build and host regressions. Resolve actual
   failures with recorded causes; review build/packaging changes independently.
-- [ ] Download artifacts, create and verify local IPA, record SHA-256, source
+- [x] Download artifacts, create and verify local IPA, record SHA-256, source
   pins, build run and outstanding device checks in docs/FORK.md and docs/UPDATING.md.
 
 ## Decisions and evidence
@@ -76,3 +76,43 @@ Microsoft runtimes only. Keep generated payloads outside Git.
   Disable LTO for ARM64EC, as already done for WoW64; retain normal Release
   optimization. Add CMake link commands and remaining Wine configure logs to
   failure artifacts. No workaround changes FEX emulation source.
+
+Minimal linker reproduction (write outside the repository; no device execution):
+
+```cpp
+#include <mutex>
+#include <shared_mutex>
+#include <thread>
+extern "C" __declspec(dllexport) void test() {
+    std::recursive_mutex m; m.lock(); m.unlock();
+    std::shared_mutex s; s.lock_shared(); s.unlock_shared();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+}
+```
+
+Compile with the pinned `arm64ec-w64-mingw32-clang++`:
+`-shared -O3 -std=c++20 -static -flto=thin probe.cpp -o probe.dll` fails on
+EC C++ runtime symbols. Removing only `-flto=thin` succeeds. Do not switch
+the FEX adapter back to LTO merely because a new toolchain configures.
+
+## Completion evidence
+
+- Run **38034074592**, source **283ecb913804f223a8d5214f7ac4587125a7e523**:
+  graphics, runtime, DXMT and app/JIT helper succeeded. LLVM was validly reused.
+  Both FEX PE targets, Wine aarch64/i386 modules, DXMT PE, D3D12 and LuaJIT built.
+- Downloaded graphics verified locally: iOS ARM64, Mesa minimum iOS 17 and
+  MoltenVK minimum iOS 15, correct install names, 7 patch hashes and both
+  unsigned hashes. App CI separately verifies signed-plugin receipts.
+- Runtime receipt has 66 verified file hashes / 63 mandatory PE paths.
+  Architectures: 4 aarch64, 47 ARM64EC/Wine x64-header, 11 i386, 1 x64 LuaJIT.
+  All 42 partial-i386 missing module/import pairs have donor modules available.
+- Final IPA **0.1.3 build 22**, **159096870 bytes**, SHA-256
+  **a0b09734d864a5bff28f2c8ac7600c24da43647abe3dca8dece5d712b86b11c8**.
+  Local packager completed successfully, including ZIP integrity/member hashes,
+  source/pin/patch/required-output receipts, native precedence and DataFix/UI checks.
+- Native archive SHA-256:
+  `f7adfc80c24556d6d67e4f0fc6575dd6fb2e5a9a74a60dfedd14fcd7870dd47c`.
+  App entitlements parsed from its Mach-O signature include all three requested
+  JIT/memory flags. Packager preserves that app binary byte for byte.
+- IPA, archives, manifest, checksum and logs remain outside Git. No device is
+  connected; build 22 requires normal sideload signing and iPhone/game retesting.

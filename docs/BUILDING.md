@@ -5,6 +5,15 @@ for the maintained source pins, fork differences and update checklist. The
 build records below preserve the earlier IPA history; the current workflow
 also builds graphics and the refreshed PE set described below.
 
+Latest completed package: **0.1.3 build 22**, source
+`283ecb913804f223a8d5214f7ac4587125a7e523`,
+[successful native run](https://github.com/LordierClaw/Madeira/actions/runs/38034074592).
+`Madeira-0.1.3-Upstream-OpenGL.ipa`: 159,096,870 bytes, SHA-256
+`a0b09734d864a5bff28f2c8ac7600c24da43647abe3dca8dece5d712b86b11c8`.
+Graphics, runtime receipts, package integrity and JIT entitlements passed;
+physical-device validation is pending. See [FORK.md](FORK.md) for build inputs
+and [the ledger](superpowers/plans/2026-10-10-updated-ipa.md) for resolved failures.
+
 [Native app build passed](https://github.com/LordierClaw/Madeira/actions/runs/37581572994) for source commit
 `dbcd1cef656db048de9dfc27ec6b37b99a71ea42`. LLVM and native dependencies came
 from successful jobs in runs `37578363960` and `37578838131`; their recipes
@@ -92,6 +101,11 @@ The FEX ARM64EC adapter must select `FEX_IOS_HOST_BUILD` and the
 Linux `/proc/cpuinfo` probe. DXMT's cross file requires the documented
 `dxmt/toolchains` symlink. These are parent build adapters; FEX source is
 unchanged. See [FORK.md](FORK.md) for thin reservations, which remain off.
+Both PE adapters force the pinned fmt/range-v3/unordered_dense dependencies;
+system discovery can incorrectly select a macOS library. Both also disable
+LTO: the ARM64EC failure on llvm-mingw 20260421 is reproduced in the
+[build ledger](superpowers/plans/2026-10-10-updated-ipa.md). Normal Release
+optimization remains enabled.
 
 The packager checks ZIP integrity and all member hashes, new UI/input markers,
 loader alignment/padding and DataFix markers, required rebuilt outputs and

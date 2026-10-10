@@ -30,6 +30,13 @@ and `backup/pre-cgow-2026-10-10` in the parent. Full FEX, DXMT, Dock, LuaJIT,
 Mesa and MoltenVK pins are in the JSON. Wine already contains the c-gow
 OpenGL implementation; **do not reapply `patches/wine-opengl-winios.patch`**.
 
+Latest verified output is **build 22**, source `283ecb9`,
+[native run 38034074592](https://github.com/LordierClaw/Madeira/actions/runs/38034074592).
+The local `outputs/Madeira-0.1.3-Upstream-OpenGL.ipa` and adjacent manifest/checksum
+are outside Git. Full size/hash and remaining device checks are in FORK.md and
+the JSON's `latest_build` field. Documentation commits after `283ecb9` do not
+change the source identity embedded in this app.
+
 ## Fork differences to preserve
 
 This table identifies the behavior and its implementation, rather than relying

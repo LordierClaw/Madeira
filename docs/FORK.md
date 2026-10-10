@@ -110,6 +110,47 @@ updated PE builds, and require those fresh outputs when packaging. The
 compatibility IPA can no longer overwrite fresh OpenGL or rebuilt i386 modules.
 Build and package evidence is recorded in the update ledger and later sections.
 
+## Updated native IPA, 2026-10-10
+
+[Native CI run 38034074592](https://github.com/LordierClaw/Madeira/actions/runs/38034074592)
+successfully built source `283ecb913804f223a8d5214f7ac4587125a7e523`: graphics,
+runtime, DXMT, Debug app and JIT helper. The unchanged LLVM artifact was reused
+from run 38030334310 after recipe comparison. Graphics were freshly compiled
+in run 38032306400 from `0a89852` and then reused by their recipe/patch cache key;
+their unsigned digest was checked before Xcode and signed hashes afterward.
+
+Local output: **`Madeira-0.1.3-Upstream-OpenGL.ipa`**, version 0.1.3,
+**build 22**, **159,096,870 bytes**. SHA-256:
+`a0b09734d864a5bff28f2c8ac7600c24da43647abe3dca8dece5d712b86b11c8`.
+The IPA, `.manifest.json`, `.ipa.sha256`, native archives and diagnostic logs
+are in the workspace's sibling `outputs/` directory, outside Git.
+
+The package contains new Mesa 25.0.7 plus all seven patches, MoltenVK 1.4.2,
+native libraries and 63 refreshed PE binaries (66 runtime receipt entries
+including LuaJIT metadata/license). All 63 mandatory paths are present.
+Rebuilt i386 files win over the compatibility overlay. Its 42 reported
+module/import pairs missing from the partial i386 build are supplied by the
+unchanged compatibility farm. This is module-presence validation, not a claim
+that every imported function has been exercised on a device.
+
+Packaging verifies all ZIP members and hashes, graphics source/patch pins,
+rebuilt PE hashes, app source, loader DataFix markers/alignment/padding and
+new UI/input strings. Native signing verification passed on macOS; the app
+Mach-O carries `get-task-allow`, `allow-jit` and increased-memory entitlements,
+and that binary is preserved exactly in the IPA. The final local overlay needs
+normal sideload signing. No Apple credentials or Microsoft runtimes are in
+source commits or CI uploads; local runtime inputs come from the checksum-
+verified compatibility IPA recorded in the manifest.
+
+[Host CI for bfe4319](https://github.com/LordierClaw/Madeira/actions/runs/38032867939)
+passes all three jobs, including the ten new synthetic packaging cases.
+Later changes address build configuration only: pinned cross dependencies and
+the reproduced ARM64EC ThinLTO linker issue. The build ledger records each
+failure and correction. No iPhone execution is claimed for build 22; retest
+gameplay, DLC loading, drag/drop, keyboard/controller and audio. Thin
+reservations remain off by default. Other unchanged inherited PE modules and
+the unchanged i386/DXMT compatibility files are explicitly not rebuilt.
+
 ## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable
