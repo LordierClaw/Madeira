@@ -79,7 +79,8 @@ and host CI [38067549685](https://github.com/LordierClaw/Madeira/actions/runs/38
 pass. Final packaging checks source pins, runtime/graphics hashes, loader
 DataFix and ZIP integrity; JIT/debug/increased-memory entitlements are present
 in the preserved native executable. See FORK.md for size/checksum. Device
-loading measurements are still pending; build 22 is retained as the baseline.
+loading measurements were pending at packaging; the subsequent build 23 result
+is recorded below. Build 22 is retained as the baseline.
 
 ## Build 23 device result, 2026-10-11
 
@@ -161,7 +162,36 @@ audio tests verify submitted ring bytes remain unchanged, flag/zero/tiny-signal
 classification, PCM16/32, nonfinite samples, interval and short-stream reports.
 Host checks do not establish device overhead or resolve the underlying issue.
 
-The reported iOS system-clock offset in landscape remains unverified. Madeira
-does not draw the clock; it requests status-bar hiding during play and uses
-native scene rotation. A full-screen screenshot is needed to identify which
-system surface is visible before changing window/status-bar ownership.
+The user narrows the iOS system-clock offset to Madeira's game-starting screen
+in landscape. `LibraryModel.begin` sets both `launching` and `current`; the main
+session therefore already requests status-bar hiding during loading. The loading
+HUD is hosted in the separate controls window, whose root has no explicit hide
+preference. This is an ownership hypothesis, not proof of a clock-coordinate
+defect. Madeira does not draw the clock and uses native scene rotation. A
+full-screen screenshot is still needed before changing this system-UI behavior.
+
+### Built diagnostic: version 0.1.3 build 25
+
+Native [run 38071462636](https://github.com/LordierClaw/Madeira/actions/runs/38071462636)
+and all three host jobs in
+[run 38071462054](https://github.com/LordierClaw/Madeira/actions/runs/38071462054)
+pass for source `1a30c74d538d3945ada0fe83787cc97391f61a72`, Wine
+`aa758165ef1e3d00cfeeecf33627b676b42f4da5`. LLVM is reused from `38030334310`;
+runtime is rebuilt, graphics and DXMT reuse matching recipes. Run 24 was
+cancelled before completion to include the generated diagnostics setting.
+
+Local output: `Madeira-0.1.3-LoadingAudioProbe.ipa`, **159,102,594 bytes**,
+SHA-256 `f8590bba81e5f78bfc47a4de7c70c47c240f56a2cc89c95693c38cca8319bac7`.
+The native archive SHA-256 is
+`ce43431d9f5c7e1f6286eaa9a2f3f4f11c7cc015a6e638e8741b7f3922b53fb5`.
+The local packager verifies ZIP integrity, payload hashes and source/runtime/
+graphics receipts. Reading the final IPA confirms both diagnostic string sets,
+the exact source/Wine pins and JIT/debug/increased-memory entitlements. The
+unchanged compatibility input is the checksum-pinned ClickKeyFix IPA recorded
+in the adjacent manifest. These artifacts and device logs stay outside Git.
+
+This candidate is for evidence collection. No loading-speed or audio fix is
+claimed. Keep the save/DLC/settings constant, note load start/finish, and allow
+about 30 seconds after reaching gameplay before collecting the log. If audio
+fails, note that interval too. Include a screenshot of the misplaced system
+clock on Madeira's starting screen. Physical-device results are pending.

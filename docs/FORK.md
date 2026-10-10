@@ -195,6 +195,17 @@ performance or audio-output fix. File lookup results and audio ring bytes stay
 unchanged in host regression checks. A report of misplaced iOS system time in
 landscape still needs a screenshot; no clock/window change is included.
 
+Native [run 38071462636](https://github.com/LordierClaw/Madeira/actions/runs/38071462636)
+and host [run 38071462054](https://github.com/LordierClaw/Madeira/actions/runs/38071462054)
+pass for source `1a30c74`, Wine `aa758165`. Local diagnostic **build 25** is
+`Madeira-0.1.3-LoadingAudioProbe.ipa`, **159,102,594 bytes**, SHA-256
+`f8590bba81e5f78bfc47a4de7c70c47c240f56a2cc89c95693c38cca8319bac7`.
+The final IPA's source/runtime receipts, diagnostic markers and native
+JIT/debug/increased-memory entitlements are verified. Artifacts, manifest and
+checksum are under sibling `outputs/`, outside Git; normal sideload signing is
+required. Build 23 remains the behavior baseline. Device results for build 25
+are pending; it does not claim to resolve loading, silence or the system clock.
+
 ## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable

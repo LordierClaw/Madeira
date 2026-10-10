@@ -30,11 +30,11 @@ and `backup/pre-cgow-2026-10-10` in the parent. Full FEX, DXMT, Dock, LuaJIT,
 Mesa and MoltenVK pins are in the JSON. Wine already contains the c-gow
 OpenGL implementation; **do not reapply `patches/wine-opengl-winios.patch`**.
 
-Latest verified output is **build 23**, source `70756cc`,
-[native run 38067549022](https://github.com/LordierClaw/Madeira/actions/runs/38067549022).
-The local `outputs/Madeira-0.1.3-LoadLookup.ipa` and adjacent manifest/checksum
+Latest verified output is diagnostic **build 25**, source `1a30c74`,
+[native run 38071462636](https://github.com/LordierClaw/Madeira/actions/runs/38071462636).
+The local `outputs/Madeira-0.1.3-LoadingAudioProbe.ipa` and adjacent manifest/checksum
 are outside Git. Full size/hash and remaining device checks are in FORK.md and
-the JSON's `latest_build` field. It includes the Wine file-lookup shortcut;
+the JSON's `latest_build` field. It includes bounded file/audio diagnostics;
 follow [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md) for evidence and retesting.
 
 ## Fork differences to preserve
@@ -46,7 +46,7 @@ and `git diff <integrated-upstream>..HEAD -- <path>` for exact changes.
 | Area | Implementation / origin | Regression evidence |
 |---|---|---|
 | ARM64EC writable data exports (DataFix) | Wine `dlls/ntdll/loader.c`; our Wine commit `c1115cac` | `tests/host/check-data-exports.py`: 17 cases; original device probes passed |
-| Existing-parent file lookup shortcut | Wine `dlls/ntdll/unix/file.c`, iOS-only; fresh parent stat before leaf fallback | `check-file-lookup.py`; see [loading evidence](LOADING_PERFORMANCE.md); device timing pending |
+| Existing-parent file lookup shortcut | Wine `dlls/ntdll/unix/file.c`, iOS-only; fresh parent stat before leaf fallback | `check-file-lookup.py`; build 23 still loads slowly, see [loading evidence](LOADING_PERFORMANCE.md) |
 | Remaining-load diagnostics | Wine `ios_file_profile.h`/`file.c`, fork commit `aa758165`; source audio counters in `audio_null_ios.c` | `check-file-profile.py`, production lookup hook counts, `check-audio-source.py`; measurements only, build 23 remains slow on device |
 | Trackpad click and soft-keyboard minimum hold | `app/Madeira/Winios/MadeiraClickQueue.h`, `Winios.m`; our bounded FIFO pacing | `check-input-queue.py`: 51 checks; ClickFix confirmed by user, keyboard game result pending |
 | Drag owner release/cancellation | `app/Madeira/ContentView.swift`; our DragFix plus integration with upstream `TouchMouseGate` | `check-trackpad.py`; image-freeze report still requires device retest |
