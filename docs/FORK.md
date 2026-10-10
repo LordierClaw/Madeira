@@ -93,6 +93,10 @@ thin harness extracts production functions and mocks VM calls; it does not
 validate the experimental allocator on iOS. Both imported x64 probe sources
 compile. All seven Mesa patches apply in order to checksum-verified Mesa 25.0.7.
 
+[Integration CI for 0998dcd](https://github.com/LordierClaw/Madeira/actions/runs/38031831395)
+passes all three jobs: Steam/DLC transfers, Cloud and Swift/iOS SDK checks,
+and runtime/input regressions, including the new thin-reservation host checks.
+
 No inherited binary is changed and none of c-gow's new DLL/EXE payloads is added.
 This is source integration, not a new native app or IPA. Mesa/MoltenVK must be
 rebuilt via their documented scripts to ship the new renderer fixes. The current
