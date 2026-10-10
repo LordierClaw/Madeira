@@ -203,8 +203,29 @@ pass for source `1a30c74`, Wine `aa758165`. Local diagnostic **build 25** is
 The final IPA's source/runtime receipts, diagnostic markers and native
 JIT/debug/increased-memory entitlements are verified. Artifacts, manifest and
 checksum are under sibling `outputs/`, outside Git; normal sideload signing is
-required. Build 23 remains the behavior baseline. Device results for build 25
-are pending; it does not claim to resolve loading, silence or the system clock.
+required. Build 23 remains the behavior baseline. The build 25 device result
+and its targeted follow-up are recorded below.
+
+## Missing-parent loading optimization, 2026-10-11
+
+Build 25 still loads slowly. Its game worker spends 75.894 of 85.009 measured
+seconds resolving paths, with 38,080 failures in 40,968 opens. Sampled failures
+are missing intermediate DLC override directories; only 39 full-parent shortcut
+hits occur. Wine commit `c5c322e3` extends that shortcut with a fresh binary
+search for an existing ancestor, then resumes ordinary case/short-name/reparse
+resolution. It caches no filesystem results and changes no DLC files.
+
+Host checks pass 4,752 differential fixtures; representative missing-parent
+probes fall from 15 to 8 stat calls, including trailing separators. Independent
+source review found no blockers. Native build and device timing are separate
+checks; no measured game speedup is claimed yet.
+
+The user reports normal audio and system-clock placement in this session. RAM
+is higher (sampled peak 2,919 versus 2,455 MiB), but actual JIT allocation is also
+larger (624 versus 432 MiB) and the FEX memory band differs. The log contains a
+stable footprint interval followed by resource loading; it does not establish
+a memory leak. Detailed metrics, comparison limits and retesting instructions
+are in [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md).
 
 ## Fixes and evidence as of 2026-10-07
 

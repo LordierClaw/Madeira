@@ -46,8 +46,8 @@ and `git diff <integrated-upstream>..HEAD -- <path>` for exact changes.
 | Area | Implementation / origin | Regression evidence |
 |---|---|---|
 | ARM64EC writable data exports (DataFix) | Wine `dlls/ntdll/loader.c`; our Wine commit `c1115cac` | `tests/host/check-data-exports.py`: 17 cases; original device probes passed |
-| Existing-parent file lookup shortcut | Wine `dlls/ntdll/unix/file.c`, iOS-only; fresh parent stat before leaf fallback | `check-file-lookup.py`; build 23 still loads slowly, see [loading evidence](LOADING_PERFORMANCE.md) |
-| Remaining-load diagnostics | Wine `ios_file_profile.h`/`file.c`, fork commit `aa758165`; source audio counters in `audio_null_ios.c` | `check-file-profile.py`, production lookup hook counts, `check-audio-source.py`; measurements only, build 23 remains slow on device |
+| Existing-ancestor file lookup shortcut | Wine `dlls/ntdll/unix/file.c`, iOS-only; full-parent stat then binary ancestor search; commit `c5c322e3` | `check-file-lookup.py`: 4,752 differential fixtures; build 25 identifies missing-parent bottleneck, next device timing pending; see [loading evidence](LOADING_PERFORMANCE.md) |
+| Remaining-load diagnostics | Wine `ios_file_profile.h`/`file.c`, fork commit `aa758165`; source audio counters in `audio_null_ios.c` | `check-file-profile.py`, production lookup hook counts, `check-audio-source.py`; build 25 still slow, audio/clock normal that session |
 | Trackpad click and soft-keyboard minimum hold | `app/Madeira/Winios/MadeiraClickQueue.h`, `Winios.m`; our bounded FIFO pacing | `check-input-queue.py`: 51 checks; ClickFix confirmed by user, keyboard game result pending |
 | Drag owner release/cancellation | `app/Madeira/ContentView.swift`; our DragFix plus integration with upstream `TouchMouseGate` | `check-trackpad.py`; image-freeze report still requires device retest |
 | Owned DLC discovery/download and aggregate transfer estimates | `SteamGames.swift`, `SteamOwnedLibrary.swift`, `SwiftSteam` content/install/library code | `check-steam-library.py`, `check-steam-ui.py`; keep ownership and shared-depot handling |

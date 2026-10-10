@@ -194,4 +194,88 @@ This candidate is for evidence collection. No loading-speed or audio fix is
 claimed. Keep the save/DLC/settings constant, note load start/finish, and allow
 about 30 seconds after reaching gameplay before collecting the log. If audio
 fails, note that interval too. Include a screenshot of the misplaced system
-clock on Madeira's starting screen. Physical-device results are pending.
+clock on Madeira's starting screen if it recurs. The subsequent result is below.
+
+## Build 25 device result and remaining bottleneck, 2026-10-11
+
+`madeira-log (4).txt` identifies build 25. The user reports normal system-clock
+placement and audio this session, but continued slow loading and higher RAM.
+This does not establish a permanent fix for the intermittent audio/UI symptoms.
+The persistent game stream now contains nonzero samples after intro and near
+the end of loading, consistent with the audible result. No audio/UI patch is
+included in the following optimization.
+
+The new profiler identifies the dominant work, rather than just its stack:
+17 consecutive game-worker (`00e4`) windows, ending approximately
+01:07:42–01:09:03, report **85.009 seconds** elapsed, **40,968** opens,
+**38,080 failures (92.95%)**, **75.894 seconds in path lookup (89.28% of elapsed)**,
+and 81.144 seconds total inside the measured file APIs. They visit 403,635 path
+components and perform 76,160 directory scan attempts, inspecting 742,678
+entries. The existing full-parent shortcut succeeds only 39 times in 31,222
+attempts. All sampled costliest failures in these windows return
+`STATUS_OBJECT_PATH_NOT_FOUND` at DLC/feature/mode override paths, for example
+`dlc/580100_crimson_court/features/districts/modes/radiant/monsters/...`.
+These samples are not an exhaustive list of all failed opens. They are
+consistent with the game's search for optional overrides; they do not prove
+that DLC is missing or corrupt.
+
+The build 23 shortcut only helped when the complete parent existed. Here an
+intermediate directory is absent, so Wine still rechecks the many exact
+ancestors from the root before doing case-insensitive and reparse searches at
+the missing component. Directory scan counts are twice the failures because
+the normal resolver also tries Wine's `?` reparse backing name.
+
+RAM also differs from the previous run:
+
+| Build 25 device-local interval | Process footprint | Process CPU / elapsed | Physical disk reads |
+|---|---|---|---|
+| 01:08:00–01:08:30 | 2,355 → 2,356 MiB | 1.706 core equivalents | 1.96 MiB |
+| 01:08:30–01:09:00 | 2,356 → 2,357 MiB | 1.687 core equivalents | 2.24 MiB |
+| 01:09:00–01:09:30 | 2,357 → 2,606 MiB | 2.201 core equivalents | 41.30 MiB |
+| 01:09:30–01:10:00 | 2,606 → 2,848 MiB | 2.595 core equivalents | 39.37 MiB |
+
+Peak sampled footprint is 2,919 MiB (build 23: 2,455 MiB). The actual JIT pool
+is **624 MiB**, versus **432 MiB** in build 23, even though both requested
+1,024 MiB: address-space placement selected different sizes. The region walk
+also records a larger FEX allocation band; near the plateau its dirty count is
+about 574 MiB versus 400 MiB in build 23. RX/RW aliases overlap in physical
+pages: do not add both pool bands to explain the footprint. The first footprint
+sample is already 712 MiB versus 526 MiB before game loading. These sessions
+therefore are not a controlled memory comparison. A flat interval followed by
+resource growth is not evidence of a leak, and this log cannot exclude one.
+No growing cache was added by the fixed-size thread-local diagnostics. The
+measured bottleneck during the flat interval is path work, not a demonstrated
+RAM cap or disk-bandwidth limit. Low Power Mode is enabled in both sessions.
+
+Analysis uses the original unprefixed profiler/audio records, preserving equal
+successive reports; `[xp]` records are deduplicated by their embedded timestamp.
+Profiler wall-clock placement uses the nearest preceding `[xp]` and is approximate;
+the 85.009-second total comes from the profiler's own monotonic spans. Exact
+user-marked save-load boundaries are still unavailable. Raw logs and the local
+analysis JSON remain outside Git.
+
+### Targeted ancestor search
+
+After a complete-path miss, the iOS resolver still tries the full parent first.
+If that fails, it binary-searches ancestor boundaries for a freshly verified
+directory, then resumes the original resolver at the next component. It handles
+trailing separators and preserves UTF-16 offsets separately from UTF-8 buffer
+positions. Case matching, short names, reparse handling, final NT status and
+create/overwrite rules remain in the original resolver. No negative result is
+cached or returned merely because an ancestor probe failed; no game paths are
+hardcoded. Unix-namespace paths retain their original behavior.
+
+The real-function host reproducer failed before this edit: a representative
+missing DLC parent took 15 `stat` calls (14 without either fork shortcut). It
+now takes **8**, with or without a trailing separator, and visits only the
+missing component and its reparse candidate. The existing leaf-case fixture
+remains at 3 calls. **4,752** differential fixtures pass, including varying
+depth/missing-ancestor boundaries, case/UTF/short names/reparse, directory
+handles, create/overwrite, buffer growth and filesystem changes. The bounded
+profiler tests also pass. `parent_try` now counts candidate ancestor stats;
+`parent_hit` counts requests that resume after a verified prefix, so interpret
+the next device log using these updated meanings.
+
+This removes redundant ancestor work but still performs the normal case/reparse
+directory scans. The syscall reduction is not a measured game speedup or RAM
+reduction; native build and another same-save device run remain necessary.

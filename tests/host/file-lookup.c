@@ -198,10 +198,13 @@ int main(void)
         {"root/Games/DD/dlc/\xc3\xa9/Found.json",0}, {"root/Games/DD/dlc/\xc3\xa9/link?",0}};
     const WCHAR *paths[] = {L"Games\\DD\\dlc\\assets\\Found.json", L"Games\\DD\\dlc\\assets\\found.json",
         L"Games\\DD\\dlc\\assets\\missing.json", L"Games\\DD\\DLC\\assets\\found.json",
-        L"Games\\DD\\absent\\file", L"Games\\DD\\dlc\\assets\\Found.json\\file",
+        L"Games\\DD\\absent\\file", L"Games\\DD\\absent\\deep\\file",
+        L"Games\\DD\\dlc\\assets\\Found.json\\file",
         L"Games\\DD\\dlc\\assets\\link", L"Games\\DD\\dlc\\folder\\file",
         L"Games\\DD\\LONG~001\\found.json", L"Games\\DD\\dlc\\assets\\LONG~001",
         L"Games\\DD\\dlc\\assets\\", L"Games\\DD\\absent\\", L"Games\\DD\\dlc\\\x00e9\\found.json",
+        L"Games\\DD\\dlc\\\x00e9\\missing\\file", L"Games\\DD\\DLC\\assets\\missing\\file",
+        L"Games\\DD\\LONG~001\\missing\\file", L"Games\\DD\\dlc\\folder\\deep\\file",
         L"missing", L"", L"Games\\DD\\.\\file", L"Games\\DD\\..\\file",
         L"Games\\DD\\\\file", L"Games\\DD\\bad*file", L"Games/DD/dlc/assets/missing.json"};
     nodes = tree; node_count = sizeof(tree) / sizeof(tree[0]);
@@ -264,6 +267,68 @@ int main(void)
     b = run(lookup_unix_name, paths[2], 0, FILE_OPEN, 0, 0, 1024);
     assert(b.status == STATUS_OBJECT_NAME_NOT_FOUND && profile_counts.parent_hit == 1);
     assert(profile_counts.components == 2 && profile_counts.scans == 2 && profile_counts.entries == 4);
+    /* Device build 25: thousands of missing intermediate DLC paths, including
+     * directory probes with a trailing slash. No full-parent shortcut hits. */
+    const struct node dlc_tree[] = {
+        {"root",1}, {"root/Program Files (x86)",1}, {"root/Program Files (x86)/Steam",1},
+        {"root/Program Files (x86)/Steam/steamapps",1},
+        {"root/Program Files (x86)/Steam/steamapps/common",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD/dlc",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD/dlc/CC",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD/dlc/CC/features",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD/dlc/CC/features/districts",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD/dlc/CC/features/districts/modes",1},
+        {"root/Program Files (x86)/Steam/steamapps/common/DD/dlc/CC/features/districts/modes/radiant",1}};
+    const WCHAR *dlc_paths[] = {
+        L"Program Files (x86)\\Steam\\steamapps\\common\\DD\\dlc\\CC\\features\\districts\\modes\\radiant\\monsters\\enemy\\enemy.info.darkest",
+        L"Program Files (x86)\\Steam\\steamapps\\common\\DD\\dlc\\CC\\features\\districts\\modes\\radiant\\monsters\\enemy\\fx\\"};
+    nodes = dlc_tree; node_count = sizeof(dlc_tree) / sizeof(dlc_tree[0]);
+    for (unsigned int i = 0; i < sizeof(dlc_paths) / sizeof(dlc_paths[0]); i++)
+    {
+        a = run(reference_lookup_unix_name, dlc_paths[i], 0, FILE_OPEN, 0, 0, 1024);
+        b = run(lookup_unix_name, dlc_paths[i], 0, FILE_OPEN, 0, 0, 1024);
+        assert(a.status == STATUS_OBJECT_PATH_NOT_FOUND && a.status == b.status);
+        printf("stat calls for missing DLC parent%s: reference=%d optimized=%d\n", i ? " (trailing separator)" : "", a.stats,b.stats);
+        if (b.stats > 8) { puts("FAIL: missing-parent probes still walk existing ancestors"); return 1; }
+        assert(profile_counts.components == 2 && profile_counts.scans == 2);
+    }
+    /* Move the missing ancestor across every search boundary, then create
+     * and remove it between calls. Vary depth, root offset, disposition,
+     * trailing separator and buffer size; compare the actual resolver. */
+    struct node depth_tree[34];
+    char depth_names[34][256];
+    WCHAR depth_path[256];
+    strcpy(depth_names[0], "root");
+    depth_tree[0] = (struct node){depth_names[0],1};
+    nodes = depth_tree;
+    for (unsigned int depth = 1; depth <= 32; depth++)
+    {
+        snprintf(depth_names[depth], sizeof(depth_names[depth]), "%s/d%02u", depth_names[depth-1],depth);
+        depth_tree[depth] = (struct node){depth_names[depth],1};
+        strcpy(depth_names[depth+1], depth_names[depth]);
+        strcat(depth_names[depth+1], "/file");
+        depth_tree[depth+1] = (struct node){depth_names[depth+1],0};
+        for (unsigned int trailing = 0; trailing < 2; trailing++)
+        {
+            const char *target = depth_names[depth+1] + 5; /* exclude root/ */
+            unsigned int len = 3;
+            memcpy(depth_path, L"C:\\", 3 * sizeof(WCHAR));
+            while (*target) { depth_path[len++] = *target == '/' ? '\\' : *target; target++; }
+            if (trailing) depth_path[len++] = '\\';
+            depth_path[len] = 0;
+            for (unsigned int d = 0; d < 3; d++)
+            for (int present = 1; present <= (int)depth + 2; present++)
+            {
+                UINT disp[] = {FILE_OPEN, FILE_CREATE, FILE_OVERWRITE};
+                node_count = present;
+                a = run(reference_lookup_unix_name, depth_path, 3, disp[d], 0, 0, 300);
+                b = run(lookup_unix_name, depth_path, 3, disp[d], 0, 0, 300);
+                assert(a.status == b.status && !strcmp(a.path,b.path) && a.pos == b.pos && a.length == b.length);
+                checks++;
+            }
+        }
+    }
     printf("PASS: %d differential fixtures, reparse offsets, buffer growth and mutation; mock filesystem only\n", checks);
     return 0;
 }

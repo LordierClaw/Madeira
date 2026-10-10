@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Wine's real lookup functions with/without the iOS parent shortcut.
+"""Compare Wine's real lookup functions with/without the iOS ancestor shortcut.
 
 The filesystem calls are mocked; this checks paths, statuses, reparse offsets
 and syscall counts, not iOS latency or Darkest Dungeon loading time.
