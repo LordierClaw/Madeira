@@ -157,6 +157,12 @@ jobs:
             build/**/err-*.txt
             build/**/*.log
             wine/build-macos/config.log
+            wine/build-aarch64/config.log
+            wine/build-i386/*.log
+            FEX/build-arm64ec/CMakeCache.txt
+            FEX/build-arm64ec/**/link.txt
+            FEX/build-wow64/CMakeCache.txt
+            FEX/build-wow64/**/link.txt
           retention-days: 7
   dxmt:
     needs: [llvm]

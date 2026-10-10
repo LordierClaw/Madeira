@@ -68,3 +68,11 @@ Microsoft runtimes only. Keep generated payloads outside Git.
   Both PE adapters now disable system discovery for fmt/range-v3/unordered_dense
   and use the pinned submodules. Wine and PE refresh are separate workflow steps
   so subsequent failures identify their stage clearly.
+- Run 38033438999: FEX ARM64EC compilation now reaches link, which fails on
+  C++ runtime EC symbols with default ThinLTO. A local mutex/shared-mutex/thread
+  DLL probe using the same llvm-mingw 20260421 reproduces the failure with
+  `-flto=thin` (exit 1) and links without LTO (exit 0). This matches
+  [LLVM issue 168469](https://github.com/llvm/llvm-project/issues/168469).
+  Disable LTO for ARM64EC, as already done for WoW64; retain normal Release
+  optimization. Add CMake link commands and remaining Wine configure logs to
+  failure artifacts. No workaround changes FEX emulation source.
