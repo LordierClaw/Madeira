@@ -34,8 +34,8 @@ Latest verified output is **build 22**, source `283ecb9`,
 [native run 38034074592](https://github.com/LordierClaw/Madeira/actions/runs/38034074592).
 The local `outputs/Madeira-0.1.3-Upstream-OpenGL.ipa` and adjacent manifest/checksum
 are outside Git. Full size/hash and remaining device checks are in FORK.md and
-the JSON's `latest_build` field. Documentation commits after `283ecb9` do not
-change the source identity embedded in this app.
+the JSON's `latest_build` field. Build 22 predates the subsequent Wine file-lookup
+shortcut; follow [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md) for its evidence.
 
 ## Fork differences to preserve
 
@@ -46,6 +46,7 @@ and `git diff <integrated-upstream>..HEAD -- <path>` for exact changes.
 | Area | Implementation / origin | Regression evidence |
 |---|---|---|
 | ARM64EC writable data exports (DataFix) | Wine `dlls/ntdll/loader.c`; our Wine commit `c1115cac` | `tests/host/check-data-exports.py`: 17 cases; original device probes passed |
+| Existing-parent file lookup shortcut | Wine `dlls/ntdll/unix/file.c`, iOS-only; fresh parent stat before leaf fallback | `check-file-lookup.py`; see [loading evidence](LOADING_PERFORMANCE.md); device timing pending |
 | Trackpad click and soft-keyboard minimum hold | `app/Madeira/Winios/MadeiraClickQueue.h`, `Winios.m`; our bounded FIFO pacing | `check-input-queue.py`: 51 checks; ClickFix confirmed by user, keyboard game result pending |
 | Drag owner release/cancellation | `app/Madeira/ContentView.swift`; our DragFix plus integration with upstream `TouchMouseGate` | `check-trackpad.py`; image-freeze report still requires device retest |
 | Owned DLC discovery/download and aggregate transfer estimates | `SteamGames.swift`, `SteamOwnedLibrary.swift`, `SwiftSteam` content/install/library code | `check-steam-library.py`, `check-steam-ui.py`; keep ownership and shared-depot handling |

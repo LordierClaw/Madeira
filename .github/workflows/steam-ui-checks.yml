@@ -97,7 +97,7 @@ jobs:
                     'audio-wow64', 'd3d12-tiled']
           failed = []
           # DataFix's Windows harness is run on the Windows development host.
-          for check in checks + ['input-queue', 'thin-reserve']:
+          for check in checks + ['input-queue', 'thin-reserve', 'file-lookup']:
               print(f'::group::{check}', flush=True)
               command = [sys.executable, f'tests/host/check-{check}.py']
               if check == 'input-queue': command += ['--cc', 'clang']

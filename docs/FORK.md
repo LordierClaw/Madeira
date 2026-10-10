@@ -153,6 +153,15 @@ the unchanged i386/DXMT compatibility files are explicitly not rebuilt.
 
 ## Fixes and evidence as of 2026-10-07
 
+The subsequent build 22 loading investigation and Wine change `17c52803` are
+recorded in [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md). The iOS-only
+existing-parent shortcut reduces repeated path-component stats. Its 960 host
+differential fixtures plus root-handle, UTF/reparse-offset, buffer-growth and
+between-call mutation checks pass; the targeted syscall-count reproducer drops
+from six stats to three. Neither this count nor source review measures game
+loading speed. Native build and physical-device timing are recorded separately.
+No memory, swap, shader-cache or game-file settings are changed with this fix.
+
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable
    MSVCP140 data exports into the existing JIT mapping, preserving code thunks and
    unrelated DLLs. The mapping must round-trip. Dynamic/ordinal and x64 static
