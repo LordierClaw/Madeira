@@ -45,9 +45,16 @@ inherited PE module: the newly added Wine builtins, updated FEX/DXMT PE files,
 and WoW64 components require their documented build steps before shipping a
 fully refreshed runtime. Existing build 17 predates this merge.
 
-Local DataFix (17 cases) and input queue (51 checks) pass. CI regression and
-iOS SDK checks are being run for the merged code. No merged IPA or physical
-device validation is claimed by this source integration.
+Local DataFix (17 cases) and input queue (51 checks) pass.
+[Integration CI](https://github.com/LordierClaw/Madeira/actions/runs/38030442329)
+passes all three jobs: Steam/DLC transfers, Cloud and Swift/iOS SDK checks,
+and runtime/input regressions against the new Wine and FEX pins. The added
+trackpad cases cover controller suppression during a live drag and a later tap.
+Wine Mono's synthetic archive checks pass; its optional real-tarball check
+is skipped because the archive is not present on CI. This source integration
+does not claim a full native build, a new IPA or physical-device validation.
+The next native build must rebuild its runtime dependencies (leave `native_run`
+empty); the build 17 dependency artifacts do not match these new pins.
 
 ## Fixes and evidence as of 2026-10-07
 
