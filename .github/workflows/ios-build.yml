@@ -137,6 +137,8 @@ jobs:
             outputs/ccache
       - name: Wine and Dock
         run: bash build/ci/runtime-ios.sh wine
+      - name: Refresh PE runtime
+        run: bash build/ci/pe-refresh.sh
       - name: Bundle native libraries
         run: bash build/ci/runtime-ios.sh pack
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

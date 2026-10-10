@@ -63,3 +63,8 @@ Microsoft runtimes only. Keep generated payloads outside Git.
   and upstream-runtime. The local compatibility donor checksum was rechecked:
   `0f0afd36d6713155b25fda999a097ea543786bc0c3087b376a95b0861f8c87ca`.
   Its graphics are ignored. No Microsoft payload is present in commits/CI.
+- Run 38032866055 passed host checks, graphics and DXMT, but FEX PE configure
+  selected Homebrew's macOS `fmt::fmt` and failed with `IMPORTED_IMPLIB not set`.
+  Both PE adapters now disable system discovery for fmt/range-v3/unordered_dense
+  and use the pinned submodules. Wine and PE refresh are separate workflow steps
+  so subsequent failures identify their stage clearly.

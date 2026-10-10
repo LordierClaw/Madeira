@@ -79,7 +79,6 @@ PY
     printf '%s\n' kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap xaudio2_8 xaudio2_9 \
         | sed 's|^|app/Madeira/arm64ec-windows/|; s|$|.dll|' > outputs/rebuilt-wine-pe.txt
     bash build/madeira-dock/build.sh
-    bash build/ci/pe-refresh.sh
     ;;
 pack)
     # Preserve generated headers and library paths, not intermediate object files.
