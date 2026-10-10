@@ -227,6 +227,19 @@ stable footprint interval followed by resource loading; it does not establish
 a memory leak. Detailed metrics, comparison limits and retesting instructions
 are in [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md).
 
+Native [run 38075335460](https://github.com/LordierClaw/Madeira/actions/runs/38075335460)
+and all three host jobs in
+[run 38075335110](https://github.com/LordierClaw/Madeira/actions/runs/38075335110)
+pass for source `a62c24ee8dc6c94928926596004ff63fc5a2fa72`, Wine
+`c5c322e300c8990c5a04861ccedbc816207bb2e2`. Local **build 26** is
+`Madeira-0.1.3-LoadAncestor.ipa`, **159,101,136 bytes**, SHA-256
+`696eeb91c462f549443abf4459b7be9f3ad61e09f374377b275a5515664d42ba`.
+Runtime is freshly rebuilt; LLVM/graphics/DXMT reuse verified recipes. The
+local packager validates ZIP integrity, payload hashes, source/dependency
+receipts and fresh runtime/graphics precedence. Reading the final IPA confirms
+version 26, source/Wine pins, diagnostic markers and JIT/debug/increased-memory
+entitlements. Device load-time and memory results for build 26 remain pending.
+
 ## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable

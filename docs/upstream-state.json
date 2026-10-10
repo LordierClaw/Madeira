@@ -85,15 +85,15 @@
     "i386-windows/xinputuap.dll"
   ],
   "latest_build": {
-    "source_commit": "1a30c74d538d3945ada0fe83787cc97391f61a72",
-    "native_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38071462636",
-    "host_checks_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38071462054",
+    "source_commit": "a62c24ee8dc6c94928926596004ff63fc5a2fa72",
+    "native_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38075335460",
+    "host_checks_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38075335110",
     "version": "0.1.3",
-    "build": "25",
-    "ipa": "Madeira-0.1.3-LoadingAudioProbe.ipa",
-    "ipa_bytes": 159102594,
-    "ipa_sha256": "f8590bba81e5f78bfc47a4de7c70c47c240f56a2cc89c95693c38cca8319bac7",
-    "device_validation": "Build 25 still loads slowly; measured missing-parent path bottleneck. Audio and system clock normal in supplied session. Sampled RAM peak 2919 MiB versus build 23 2455 MiB, with different actual JIT pool (624 versus 432 MiB); not a controlled memory comparison.",
+    "build": "26",
+    "ipa": "Madeira-0.1.3-LoadAncestor.ipa",
+    "ipa_bytes": 159101136,
+    "ipa_sha256": "696eeb91c462f549443abf4459b7be9f3ad61e09f374377b275a5515664d42ba",
+    "device_validation": "Pending for build 26 ancestor optimization. Build 25 measured missing-parent lookup bottleneck; audio/clock normal in that session. RAM comparison is confounded by different actual JIT pools. See docs/LOADING_PERFORMANCE.md.",
     "local_only": true
   }
 }

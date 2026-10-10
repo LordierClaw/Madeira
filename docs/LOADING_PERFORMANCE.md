@@ -278,4 +278,28 @@ the next device log using these updated meanings.
 
 This removes redundant ancestor work but still performs the normal case/reparse
 directory scans. The syscall reduction is not a measured game speedup or RAM
-reduction; native build and another same-save device run remain necessary.
+reduction. Another same-save device run remains necessary.
+
+### Built candidate: version 0.1.3 build 26
+
+Native [run 38075335460](https://github.com/LordierClaw/Madeira/actions/runs/38075335460)
+and host [run 38075335110](https://github.com/LordierClaw/Madeira/actions/runs/38075335110)
+pass for source `a62c24ee8dc6c94928926596004ff63fc5a2fa72`, Wine
+`c5c322e300c8990c5a04861ccedbc816207bb2e2`. LLVM is reused from `38030334310`;
+runtime is fresh, graphics/DXMT use matching recipe caches. Native archive
+SHA-256: `40f457dbdd9a3139a163e0d1f455e7c298451b193c17e391d52f794ee35799f5`.
+
+Local IPA: `Madeira-0.1.3-LoadAncestor.ipa`, **159,101,136 bytes**, SHA-256
+`696eeb91c462f549443abf4459b7be9f3ad61e09f374377b275a5515664d42ba`.
+Packaging passes ZIP/hash/source/runtime/graphics checks using the unchanged,
+checksum-pinned ClickKeyFix compatibility input. The final IPA verifies build
+26, exact source/Wine receipts, diagnostic markers and native JIT/debug/
+increased-memory entitlements. IPA, manifest, checksum and logs remain outside
+Git. These are build/packaging results, not an iPhone loading-speed result.
+
+Retest the same save/dungeon and DLC selection, with the same configuration.
+Keep Low Power Mode and renderer settings constant for this comparison. Note
+the actual JIT pool reported at launch because the requested pool can shrink
+differently. Compare loading time and worker lookup time/call counts; assess
+RAM separately after reaching the same scene. No memory/cache configuration
+change is included in build 26. Physical-device results are pending.
