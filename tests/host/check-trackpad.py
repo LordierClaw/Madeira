@@ -47,7 +47,9 @@ class UIView {
 }
 final class UITouch: Hashable {
     enum Phase { case began, moved, stationary, ended, cancelled }
+    enum TouchType { case direct, indirectPointer }
     var phase = Phase.began
+    var type = TouchType.direct
     var point = CGPoint(x: 40, y: 40)
     weak var view: UIView?
     init(_ view: UIView) { self.view = view }
@@ -63,6 +65,11 @@ final class InputSettings {
     static let shared = InputSettings()
     var relative = false
     var sensRel = 1.0, sensAbs = 1.0
+}
+enum TouchMouseGate {
+    static var blocked = false
+    static let mode = 1
+    static func suppressing(touchpad: Bool) -> Bool { blocked }
 }
 final class HardwareInput {
     enum Phase { case began, moved, ended, cancelled }
@@ -96,6 +103,7 @@ class MetalBackedView: UIView {
 tests = r'''
 extension MetalBackedView {
     func loseInteraction() { LIFECYCLE_RESET }
+    func noSuppressedTouches() -> Bool { GATE_STATE }
 }
 func expect(_ want: [UInt32], _ reason: String) {
     if mouse != want {
@@ -109,6 +117,7 @@ func fresh() -> MetalBackedView {
     HardwareInput.shared.intercept = false
     HardwareInput.shared.endings = 0
     InputSettings.shared.relative = false
+    TouchMouseGate.blocked = false
     return MetalBackedView()
 }
 func startDrag(_ v: MetalBackedView) -> UITouch {
@@ -256,13 +265,43 @@ do {
     end(v, a, UIEvent(a))
     expect([], "holding to aim in relative mode must not click")
 }
-print("PASS: trackpad click, drag ownership, both lift orders, orphan recovery, cancellation, routing, multitouch and relative mode")
+do {
+    let v = fresh(), a = startDrag(v), b = UITouch(v)
+    TouchMouseGate.blocked = true
+    v.touchesBegan([b], with: UIEvent(a, b))
+    end(v, b, UIEvent(a, b))
+    precondition(v.noSuppressedTouches(), "drag branch must retire suppressed finger")
+    end(v, a, UIEvent(a))
+    expect([2, 4], "controller gate cannot strand an existing drag")
+}
+do {
+    let v = fresh(), a = UITouch(v), b = UITouch(v)
+    TouchMouseGate.blocked = true
+    v.touchesBegan([a], with: UIEvent(a))
+    TouchMouseGate.blocked = false
+    v.touchesBegan([b], with: UIEvent(a, b))
+    DispatchQueue.main.advance(0.1)
+    end(v, b, UIEvent(a, b)); end(v, a, UIEvent(a))
+    expect([2, 4], "a previously suppressed finger cannot turn a new tap into scrolling")
+}
+do {
+    let v = fresh(), a = startDrag(v), b = UITouch(v)
+    TouchMouseGate.blocked = true
+    v.touchesBegan([b], with: UIEvent(a, b))
+    HardwareInput.shared.intercept = true
+    b.phase = .cancelled
+    v.touchesCancelled([b], with: UIEvent(a, b))
+    precondition(v.noSuppressedTouches(), "cancellation retires suppressed touch before interception")
+    expect([2, 4], "cancel with controller gate still releases the drag")
+}
+print("PASS: trackpad click, drag ownership, both lift orders, orphan recovery, cancellation, routing, multitouch, controller gate and relative mode")
 '''
 with tempfile.TemporaryDirectory(prefix='madeira-trackpad-') as temp:
     swift = Path(temp) / 'Trackpad.swift'
     exe = Path(temp) / 'trackpad'
     # Older source has no lifecycle hook; its owner-lifts regression fails first.
     lifecycle = 'resetTrackpadGesture(reason: "fixture lifecycle loss")' if 'func resetTrackpadGesture' in trackpad else ''
-    swift.write_text(stubs + trackpad + tests.replace('LIFECYCLE_RESET', lifecycle))
+    gate_state = 'tmgSwallowed.isEmpty' if 'private var tmgSwallowed' in trackpad else 'true'
+    swift.write_text(stubs + trackpad + tests.replace('LIFECYCLE_RESET', lifecycle).replace('GATE_STATE', gate_state))
     subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', str(swift), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

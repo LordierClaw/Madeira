@@ -8,6 +8,10 @@ on:
       - 'app/Madeira.xcodeproj/**'
       - 'app/Madeira/Info.plist'
       - 'tests/host/**'
+      - 'build/**'
+      - 'app/Madeira/Winios/**'
+      - 'wine'
+      - 'FEX'
       - '.github/workflows/steam-ui-checks.yml'
   workflow_dispatch:
 permissions:
@@ -46,12 +50,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /app/Madeira/*.swift
-            /app/Madeira/SwiftSteam/
-            /tests/host/
       - name: Cloud decisions
         run: python3 tests/host/check-steam-cloud.py
       - name: Parse app Swift sources
@@ -62,3 +60,42 @@ jobs:
         run: python3 tests/host/check-trackpad.py
       - name: Typecheck changed UI against the iOS SDK
         run: python3 tests/host/check-steam-ui.py
+      - name: Upstream controller and library regressions
+        run: |
+          python3 - <<'PY'
+          import subprocess, sys
+          checks = ['touch-gamepad', 'library-groups', 'steam-games', 'frontend', 'wine-mono']
+          failed = []
+          for check in checks:
+              print(f'::group::{check}', flush=True)
+              if subprocess.run([sys.executable, f'tests/host/check-{check}.py']).returncode:
+                  failed.append(check)
+              print('::endgroup::', flush=True)
+          if failed: sys.exit('Failed: ' + ', '.join(failed))
+          PY
+  upstream-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Matching runtime sources
+        run: git submodule update --init --depth 1 wine FEX
+      - name: Runtime and input regressions
+        env:
+          CC: clang
+        run: |
+          python3 - <<'PY'
+          import subprocess, sys
+          checks = ['gamepad', 'pad-output', 'hidpad', 'hw-registry', 'child-desktop',
+                    'child-ntdll-alias', 'ec-conhost', 'free-delay', 'iat-sync-owner',
+                    'image-reload', 'kmt-adapter', 'stale-heal-owner', 'audio-downmix',
+                    'audio-wow64', 'd3d12-tiled']
+          failed = []
+          for check in checks + ['data-exports', 'input-queue']:
+              print(f'::group::{check}', flush=True)
+              command = [sys.executable, f'tests/host/check-{check}.py']
+              if check in ['data-exports', 'input-queue']: command += ['--cc', 'clang']
+              if subprocess.run(command).returncode: failed.append(check)
+              print('::endgroup::', flush=True)
+          if failed: sys.exit('Failed: ' + ', '.join(failed))
+          PY

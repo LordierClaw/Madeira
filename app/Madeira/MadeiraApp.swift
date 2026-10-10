@@ -6,6 +6,12 @@ struct MadeiraApp: App {
     @UIApplicationDelegateAdaptor(MadeiraAppDelegate.self) private var appDelegate
     @ObservedObject private var library = LibraryModel.shared
     @Environment(\.scenePhase) private var scenePhase
+    init() {
+        // ml1172: read the screen on the main thread; library entries, whose
+        // default Resolution comes from it, are also made on other threads.
+        _ = ResolutionChoices.screen
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -33,8 +39,9 @@ struct MadeiraApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { MadeiraOrientation.shared.apply() }
                 }
-                // madeira://jit-network/...: the Madeira JIT shortcut returning (JITNetwork.swift).
-                .onOpenURL { url in JITNetworkShortcut.shared.handle(url) }
+                // madeira://jit-network/... (the Madeira JIT shortcut returning, JITNetwork.swift),
+                // else madeira://play?exe=... (Home Screen shortcuts, SavesAndShortcuts.swift).
+                .onOpenURL { url in if !JITNetworkShortcut.shared.handle(url) { ShortcutRouter.shared.handle(url) } }
         }
     }
 }

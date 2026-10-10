@@ -2,8 +2,8 @@
 
 The working repositories are [LordierClaw/Madeira](https://github.com/LordierClaw/Madeira)
 and its Wine submodule [LordierClaw/Madeira-wine](https://github.com/LordierClaw/Madeira-wine).
-Both use `madeira-fixes` as the maintained branch. The inherited `main` and other
-upstream branches have not been overwritten. Future development belongs here.
+Madeira development uses `ui-ux`; Wine uses `madeira-fixes`. The inherited
+`main` and other upstream branches have not been overwritten. Future development belongs here.
 
 ## Provenance
 
@@ -16,9 +16,38 @@ upstream branches have not been overwritten. Future development belongs here.
   The prebuilt `opengl32.dll` was deliberately excluded. The Wine source patch
   is committed in our Wine submodule, so it must not be reapplied during builds.
 
-These known baselines match the source used for the device troubleshooting.
-New upstream commits are not automatically part of this branch; merging them
-is a separate change with its own validation.
+These original baselines match the source used for the device troubleshooting.
+The maintained development branch is now `ui-ux`; `madeira-fixes` remains its
+original base. Wine continues on `madeira-fixes`.
+
+## Upstream integration, 2026-10-10
+
+`ui-ux` merges `willfaust/Madeira` main at `48f976429c189f8396e23d251d8a82f43c705922`.
+The Wine fork merges `willfaust/wine` madeira-lgpl at
+`257f271cfffed9f22f7987cac53bc00095d092fe`, producing `2233aa82`.
+Local `backup/pre-upstream-2026-10-10` branches retain both pre-merge tips.
+These are merges, with no rewriting of the published fix commits.
+
+DataFix, OpenGL, click/key pacing, DragFix, DLC ownership/downloads and progress,
+Cloud's keep-local choice, and landscape only while playing are retained.
+Drag endings also retire touches suppressed by upstream's controller mouse gate;
+suppressed touches cannot turn a later trackpad tap into two-finger scrolling.
+Upstream's controller continuity, builtin XInput selection, rumble, Wine Mono,
+library, display, loader and memory fixes are included, together with its FEX,
+DXMT and Dock pins. c-gow was fetched for reference, not merged wholesale.
+
+The merge preserves the fork's existing binary files and excludes 25 newly
+added upstream DLLs. No Microsoft runtime is added. The native CI recipe now
+rebuilds the changed kernelbase, mscoree and XInput PE modules along with ntdll
+and OpenGL, keys its FEX cache by the actual pin, and checks the HID/PE recipes
+before reusing runtime artifacts. This is still not a full rebuild of every
+inherited PE module: the newly added Wine builtins, updated FEX/DXMT PE files,
+and WoW64 components require their documented build steps before shipping a
+fully refreshed runtime. Existing build 17 predates this merge.
+
+Local DataFix (17 cases) and input queue (51 checks) pass. CI regression and
+iOS SDK checks are being run for the merged code. No merged IPA or physical
+device validation is claimed by this source integration.
 
 ## Fixes and evidence as of 2026-10-07
 

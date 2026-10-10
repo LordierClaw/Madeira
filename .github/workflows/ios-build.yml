@@ -74,7 +74,10 @@ jobs:
       - name: Build tools
         run: brew install ccache bison autoconf automake libtool pkgconf
       - name: Initialize FEX before restoring its build directory
-        run: git submodule update --init --depth 1 FEX
+        id: runtime-pins
+        run: |
+          git submodule update --init --depth 1 FEX
+          echo "fex=$(git rev-parse HEAD:FEX)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: native-cache
         with:
@@ -89,8 +92,8 @@ jobs:
             build/rppairing-ios/target
             ~/.cargo/registry
             outputs/ccache
-          key: native-deps-xcode26.3-fex26859e1-v2-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}-${{ github.run_id }}
-          restore-keys: native-deps-xcode26.3-fex26859e1-v2-${{ hashFiles('build/fex-ios/build.sh', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}-
+          key: native-deps-xcode26.3-${{ steps.runtime-pins.outputs.fex }}-v3-${{ hashFiles('build/fex-ios/build.sh', 'build/ci/fex-native-diagnostics.h', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: native-deps-xcode26.3-${{ steps.runtime-pins.outputs.fex }}-v3-${{ hashFiles('build/fex-ios/build.sh', 'build/ci/fex-native-diagnostics.h', 'build/gnutls-ios/build.sh', 'build/ffmpeg/build.sh', 'build/rppairing-ios/Cargo.lock') }}-
       - name: FEX for iOS
         run: bash build/ci/runtime-ios.sh fex
       - name: Crypto, media, fonts and pairing
@@ -218,7 +221,7 @@ jobs:
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$NATIVE_RUN" --jq .head_sha)
           git fetch --depth=1 origin "$sha"
-          git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/ci/fex-native-diagnostics.h build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/madeira-dock build/madeira_cfg.h
+          git diff --exit-code "$sha" HEAD -- FEX wine madeira-dock build/ci/runtime-ios.sh build/ci/fex-native-diagnostics.h build/fex-ios build/gnutls-ios build/ffmpeg build/freetype-ios build/rppairing-ios build/ntdll-unix build/win32u-unix build/wineserver build/crypto-unix build/madsync build/hidpad build/wine-pe build/madeira-dock build/madeira_cfg.h
       - name: Restore libraries
         run: |
           git submodule update --init --depth 1 FEX

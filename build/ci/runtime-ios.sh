@@ -70,6 +70,13 @@ assert len(src) <= target
 Path('app/Madeira/arm64ec-windows/ntdll.dll').write_bytes(src.ljust(target, b'\0'))
 PY
     cp wine/build-macos/dlls/opengl32/arm64ec-windows/opengl32.dll app/Madeira/arm64ec-windows/
+    # Upstream's XInput and Mono changes also live in PE modules; rebuilding
+    # only ntdll would silently keep the old controller and managed-runtime code.
+    WINE_BUILD_DIR="$ROOT/wine/build-macos" JOBS=3 bash build/wine-pe/build-modules.sh \
+        kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap
+    # Track exactly the rebuilt PE inputs carried to the separate app job.
+    printf '%s\n' kernelbase mscoree xinput1_1 xinput1_2 xinput1_3 xinput1_4 xinput9_1_0 xinputuap \
+        | sed 's|^|app/Madeira/arm64ec-windows/|; s|$|.dll|' > outputs/rebuilt-wine-pe.txt
     bash build/madeira-dock/build.sh
     ;;
 pack)
@@ -79,6 +86,7 @@ pack)
     printf '%s\n' app/Madeira/legal/LICENSES-rppairing-crates.txt \
         app/Madeira/arm64ec-windows/ntdll.dll app/Madeira/arm64ec-windows/opengl32.dll \
         app/Madeira/arm64ec-windows/dockhost.exe app/Madeira/arm64ec-windows/dock-notices.txt >> outputs/native-files.txt
+    cat outputs/rebuilt-wine-pe.txt >> outputs/native-files.txt
     tar -czf outputs/native-ios.tar.gz -T outputs/native-files.txt
     ;;
 *) exit 2 ;;

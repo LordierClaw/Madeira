@@ -86,8 +86,10 @@ final class HardwareInput { static let shared = HardwareInput(); func start() {}
 final class JITNetworkShortcut {
     static let shared = JITNetworkShortcut()
     func restoreLeftover() {}
-    func handle(_ url: URL) {}
+    func handle(_ url: URL) -> Bool { false }
 }
+enum ResolutionChoices { static let screen = CGSize(width: 390, height: 844) }
+final class ShortcutRouter { static let shared = ShortcutRouter(); func handle(_ url: URL) {} }
 '''.replace('MODEL_PARTS', '\n'.join(model_parts))
 parts = [
     block((app / 'SwiftSteam/Content/DepotDownloader.swift').read_text(), 'struct SteamDownloadProgress:'),
