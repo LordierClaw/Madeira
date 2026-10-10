@@ -39,6 +39,11 @@ static DIR directory;
 static int root_seen;
 static int lookup_root = 73;
 static int alternate_root;
+static struct {
+    unsigned int full_hit, full_miss, parent_try, parent_hit, components;
+    unsigned int component_miss, case_query, scans, entries;
+} profile_counts;
+#define IOS_FILE_COUNT(n) (++profile_counts.n)
 
 static int equal_name(const char *a, const char *b)
 {
@@ -173,6 +178,7 @@ static struct result run(lookup_fn fn, const WCHAR *path, unsigned int offset,
     assert(buffer && size > 5);
     strcpy(buffer, "root");
     stat_count = 0; reparse_pos = reparse_len = -1; root_seen = -1;
+    memset(&profile_counts, 0, sizeof(profile_counts));
     result.status = fn(lookup_root, &attr, &name, offset, &buffer, size, 4, disp, open_reparse, is_unix, 0);
     result.stats = stat_count; result.pos = reparse_pos; result.length = reparse_len; result.root = root_seen;
     result.path[0] = 0;
@@ -239,6 +245,7 @@ int main(void)
     /* No persistent cache: adding/removing a file is seen by the next lookup. */
     a = run(lookup_unix_name, paths[0], 0, FILE_OPEN, 0, 0, 1024);
     assert(a.status == STATUS_SUCCESS);
+    assert(profile_counts.full_hit == 1 && !profile_counts.full_miss && !profile_counts.components);
     node_count = 5;
     b = run(lookup_unix_name, paths[0], 0, FILE_OPEN, 0, 0, 1024);
     assert(b.status == STATUS_OBJECT_NAME_NOT_FOUND);
@@ -251,6 +258,12 @@ int main(void)
     assert(a.status == STATUS_SUCCESS && b.status == STATUS_SUCCESS);
     printf("stat calls for deep parent + case-mismatched leaf: reference=%d optimized=%d\n",a.stats,b.stats);
     if (b.stats >= a.stats || b.stats != 3) { puts("FAIL: redundant parent-component stats remain"); return 1; }
+    assert(profile_counts.full_miss == 1 && profile_counts.parent_try == 1 && profile_counts.parent_hit == 1);
+    assert(profile_counts.components == 1 && profile_counts.component_miss == 1);
+    assert(profile_counts.case_query == 1 && profile_counts.scans == 1 && profile_counts.entries == 1);
+    b = run(lookup_unix_name, paths[2], 0, FILE_OPEN, 0, 0, 1024);
+    assert(b.status == STATUS_OBJECT_NAME_NOT_FOUND && profile_counts.parent_hit == 1);
+    assert(profile_counts.components == 2 && profile_counts.scans == 2 && profile_counts.entries == 4);
     printf("PASS: %d differential fixtures, reparse offsets, buffer growth and mutation; mock filesystem only\n", checks);
     return 0;
 }

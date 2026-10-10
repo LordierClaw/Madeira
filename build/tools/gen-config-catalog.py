@@ -43,6 +43,8 @@ INT_READERS = {"madeira_cfg_int", "mad_cfg_int_pe"}
 # Titles, kinds and fixed choices for options with a dedicated Settings row.
 # "choices" are (value, label); the empty value means "remove the key".
 OVERLAY = {
+    "env.MADEIRA_FILE_PROFILE": {"title": "File loading diagnostics", "kind": "bool", "default": "1",
+                "note": "Diagnostic build: summarize file opens and metadata queries at most once per thread every five seconds. Includes sampled paths and audio-file open results in the local log. 0 disables timing/reporting; restart Madeira after changing."},
     "env.MADEIRA_THIN_RESERVE": {"title": "Experimental thin reservations", "kind": "bool", "default": "0",
                 "note": "Off by default in this fork. 1 enables overlapping reservation tails, which can alias another allocation's memory. Use only with a game verified to stay within each reservation's head."},
     "swap-mb": { "note": "Moves game data to a file on this device's storage when memory runs short, up to this size. Off by default; read at launch.", "category": "Memory & JIT pool","title": "Swap tier size", "kind": "choice",

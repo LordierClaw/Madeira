@@ -363,6 +363,15 @@ struct ios_stream {
     _Atomic uint32_t st_cbs;       /* render passes that mixed this stream */
     _Atomic uint32_t st_short_cbs; /* passes that ran short */
     _Atomic uint32_t st_cb_max;    /* largest render pass, device frames */
+    /* Submission-thread diagnostics only; never read/written by the RT mixer.
+     * Per-stream storage prevents a reused mixer slot inheriting old levels. */
+    struct ios_source_stats {
+        uint64_t frames, silent_frames, unflagged_frames;
+        uint64_t samples, clip, zero_samples, nonzero_samples, nonfinite_samples;
+        double sum_abs;
+        float peak;
+    } source_window, source_total;
+    int64_t source_last;
 };
 
 /* ml739: one stream object per client, mirroring Wine's CoreAudio driver.
@@ -1181,6 +1190,107 @@ static NTSTATUS ios_create_stream(void *args) {
     return STATUS_SUCCESS;
 }
 
+/* Source diagnostics: run only on the submitting/releasing client thread.
+ * Reuse the existing bounded sample scan, with no RT work or per-buffer log.
+ * Frame counts are exact accepted frames; sample counts retain the old stride
+ * for buffers over 4096 frames and cover at most the 12 channels we mix. */
+static void ios_source_stats_add(struct ios_source_stats *dst, const struct ios_source_stats *delta)
+{
+    dst->frames += delta->frames;
+    dst->silent_frames += delta->silent_frames;
+    dst->unflagged_frames += delta->unflagged_frames;
+    dst->samples += delta->samples;
+    dst->clip += delta->clip;
+    dst->zero_samples += delta->zero_samples;
+    dst->nonzero_samples += delta->nonzero_samples;
+    dst->nonfinite_samples += delta->nonfinite_samples;
+    dst->sum_abs += delta->sum_abs;
+    if (delta->peak > dst->peak) dst->peak = delta->peak;
+}
+
+static void ios_source_report(struct ios_stream *s, int releasing)
+{
+    const struct ios_source_stats *st = releasing ? &s->source_total : &s->source_window;
+    uint64_t finite = st->samples - st->nonfinite_samples;
+    int slot = -1, i;
+    if (!st->frames) return;
+    for (i = 0; i < IOS_MAX_STREAMS; i++)
+        if (atomic_load_explicit(&g_mix[i], memory_order_relaxed) == s) { slot = i; break; }
+    fprintf(stderr, "[ios_audio] ml1065 slot=%d source: reason=%s stream=%p %llu sampled samples, "
+                    "mean|x|=%.4f peak=%.3f clipped=%llu; frames=%llu silent-flagged=%llu unflagged=%llu; "
+                    "unflagged sampled zero=%llu nonzero=%llu nonfinite=%llu (rate %u ch %u float=%d bits=%d)\n",
+            slot, releasing ? "release-lifetime" : "periodic", (void *)s,
+            (unsigned long long)st->samples, finite ? st->sum_abs / (double)finite : 0.0, st->peak,
+            (unsigned long long)st->clip, (unsigned long long)st->frames,
+            (unsigned long long)st->silent_frames, (unsigned long long)st->unflagged_frames,
+            (unsigned long long)st->zero_samples, (unsigned long long)st->nonzero_samples,
+            (unsigned long long)st->nonfinite_samples,
+            s->sample_rate, s->channels, s->is_float, s->sample_bits);
+}
+
+static void ios_source_observe(struct ios_stream *s, UINT32 n, UINT flags)
+{
+    struct ios_source_stats delta = {0};
+    UINT32 f, c, step = n > 4096 ? n / 4096 : 1;
+    int silent = (flags & 0x2 /* AUDCLNT_BUFFERFLAGS_SILENT */) != 0;
+    int64_t now;
+    delta.frames = n;
+    if (silent) delta.silent_frames = n;
+    else delta.unflagged_frames = n;
+    for (f = 0; f < n; f += step) {
+        const BYTE *fr = s->render_scratch + (size_t)f * s->frame_bytes;
+        for (c = 0; c < s->channels && c < 12; c++) {
+            float v, a;
+            int zero;
+            delta.samples++;
+            if (s->is_float) {
+                uint32_t bits;
+                memcpy(&bits, fr + (size_t)c * 4, sizeof(bits));
+                /* Classify NaN/Inf by bits before float arithmetic so one bad
+                 * sample cannot poison the level report. Audio stays untouched. */
+                if ((bits & 0x7f800000u) == 0x7f800000u) {
+                    delta.nonfinite_samples++;
+                    continue;
+                }
+                zero = (bits & 0x7fffffffu) == 0; /* signed zero, independent of FP flush mode */
+                memcpy(&v, &bits, sizeof(v));
+            } else if (s->sample_bits == 16) {
+                int16_t sample = ((const int16_t *)fr)[c];
+                zero = sample == 0;
+                v = sample * (1.0f / 32768.0f);
+            } else {
+                int32_t sample = ((const int32_t *)fr)[c];
+                zero = sample == 0;
+                v = sample * (1.0f / 2147483648.0f);
+            }
+            if (!silent) {
+                if (zero) delta.zero_samples++;
+                else delta.nonzero_samples++;
+            }
+            a = v < 0 ? -v : v;
+            delta.sum_abs += a;
+            if (a > delta.peak) delta.peak = a;
+            if (a >= 0.99f) delta.clip++;
+        }
+    }
+    ios_source_stats_add(&s->source_window, &delta);
+    ios_source_stats_add(&s->source_total, &delta);
+    now = (int64_t)time(NULL);
+    if (now - s->source_last >= 10) {
+        if (!s->is_float && n && s->frame_bytes >= 2) {
+            const uint16_t *w = (const uint16_t *)s->render_scratch;
+            /* Preserve the existing byte sample, without reading past a short buffer. */
+            if ((size_t)n * s->frame_bytes >= 24)
+                fprintf(stderr, "[ios_audio] ml1067 first 12 words of the last buffer (%u frames asked): "
+                                "%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x\n",
+                        n, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11]);
+        }
+        ios_source_report(s, 0);
+        memset(&s->source_window, 0, sizeof(s->source_window));
+        s->source_last = now;
+    }
+}
+
 static NTSTATUS ios_release_stream(void *args) {
     struct release_stream_params *p = args;
     struct ios_stream *s = stream_from_handle(p->stream);
@@ -1197,6 +1307,7 @@ static NTSTATUS ios_release_stream(void *args) {
         NtWaitForSingleObject(p->timer_thread, FALSE, NULL);
         NtClose(p->timer_thread);
     }
+    ios_source_report(s, 1);  /* includes streams shorter than the 10 s report interval */
     ios_dev_detach(s);
     ios_dev_stop_if_idle();
     stream_unregister(s);
@@ -1473,43 +1584,7 @@ static NTSTATUS ios_release_render_buffer(void *args) {
                    s->render_scratch + (size_t)i * fb, (size_t)chunk * fb);
             i += chunk;
         }
-        /* ml1065: what is the game actually handing us? A run has had constant
-         * white noise since audio first worked; this says whether the noise is in
-         * the source data (mean level high and flat, peaks saturating) or made
-         * later (clean source, noisy output). One line per stream per ~10 s. */
-        {
-            static struct { uint64_t frames, clip; double sum_abs; float peak; time_t last; } st[IOS_MAX_STREAMS];
-            int slot = -1, si;
-            for (si = 0; si < IOS_MAX_STREAMS; si++) if (atomic_load_explicit(&g_mix[si], memory_order_relaxed) == s) { slot = si; break; }
-            if (slot >= 0 && slot < IOS_MAX_STREAMS && s->channels) {
-                UINT32 f2, c2, step = n > 4096 ? n / 4096 : 1;
-                for (f2 = 0; f2 < n; f2 += step) {
-                    const BYTE *fr = s->render_scratch + (size_t)f2 * fb;
-                    /* every channel the mixer reads, not just the first two:
-                     * a 5.1 client can carry signal only in its centre */
-                    for (c2 = 0; c2 < s->channels && c2 < 12; c2++) {
-                        float v = s->is_float ? ((const float *)fr)[c2]
-                                : s->sample_bits == 16 ? ((const int16_t *)fr)[c2] * (1.0f / 32768.0f)
-                                : ((const int32_t *)fr)[c2] * (1.0f / 2147483648.0f);
-                        float a = v < 0 ? -v : v;
-                        st[slot].sum_abs += a; if (a > st[slot].peak) st[slot].peak = a; if (a >= 0.99f) st[slot].clip++;
-                        st[slot].frames++;
-                    }
-                }
-                if (time(NULL) - st[slot].last >= 10 && st[slot].frames && !s->is_float) {   /* ml1067: what do the bytes look like */
-                    const uint16_t *w = (const uint16_t *)s->render_scratch;
-                    fprintf(stderr, "[ios_audio] ml1067 slot=%d first 12 words of the last buffer (%u frames asked): "
-                            "%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x %04x\n", slot, n,
-                            w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10], w[11]);
-                }
-                if (time(NULL) - st[slot].last >= 10 && st[slot].frames) {
-                    fprintf(stderr, "[ios_audio] ml1065 slot=%d source: %llu samples, mean|x|=%.4f peak=%.3f clipped=%llu (rate %u ch %u float=%d bits=%d)\n",
-                            slot, (unsigned long long)st[slot].frames, st[slot].sum_abs / (double)st[slot].frames, st[slot].peak,
-                            (unsigned long long)st[slot].clip, s->sample_rate, s->channels, s->is_float, s->sample_bits);
-                    st[slot].frames = 0; st[slot].sum_abs = 0; st[slot].peak = 0; st[slot].clip = 0; st[slot].last = time(NULL);
-                }
-            }
-        }
+        ios_source_observe(s, n, p->flags);
         /* release-store AFTER the copy so the RT callback never reads
          * frames that aren't fully written */
         atomic_store_explicit(&s->write_pos, wr + n, memory_order_release);

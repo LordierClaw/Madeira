@@ -178,6 +178,23 @@ increased-memory entitlements. IPA, manifest, checksum and native archive live
 outside Git under `outputs/`; sideload signing is still required. Build 22 is
 retained for comparison. No physical-device speedup is claimed for build 23.
 
+## Remaining loading and audio investigation, 2026-10-11
+
+The user tested build 23 and still reports long save/dungeon loading. Its new
+device log confirms a minute-long process-footprint plateau near 1,974 MiB,
+while the same game worker remains busy in native file lookup/metadata calls.
+The persistent audio stream delivers zeros with healthy output pacing; the old
+probe cannot distinguish client-requested silence from an unflagged zero signal.
+See [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md) for the measured intervals,
+JIT-pool difference, evidence limits, and bounded diagnostic additions.
+
+The next diagnostic candidate preserves build 23 behavior, adding per-thread
+file-open/metadata timings and bounded path/status samples plus per-stream
+silent-flag/source-sample summaries. These are measurements, not another
+performance or audio-output fix. File lookup results and audio ring bytes stay
+unchanged in host regression checks. A report of misplaced iOS system time in
+landscape still needs a screenshot; no clock/window change is included.
+
 ## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable

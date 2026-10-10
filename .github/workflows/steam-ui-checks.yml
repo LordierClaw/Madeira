@@ -94,10 +94,10 @@ jobs:
           checks = ['gamepad', 'pad-output', 'hidpad', 'hw-registry', 'child-desktop',
                     'child-ntdll-alias', 'ec-conhost', 'free-delay', 'iat-sync-owner',
                     'image-reload', 'kmt-adapter', 'stale-heal-owner', 'audio-downmix',
-                    'audio-wow64', 'd3d12-tiled']
+                    'audio-wow64', 'audio-source', 'd3d12-tiled']
           failed = []
           # DataFix's Windows harness is run on the Windows development host.
-          for check in checks + ['input-queue', 'thin-reserve', 'file-lookup']:
+          for check in checks + ['input-queue', 'thin-reserve', 'file-lookup', 'file-profile']:
               print(f'::group::{check}', flush=True)
               command = [sys.executable, f'tests/host/check-{check}.py']
               if check == 'input-queue': command += ['--cc', 'clang']

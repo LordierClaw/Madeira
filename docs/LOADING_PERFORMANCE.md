@@ -80,3 +80,88 @@ pass. Final packaging checks source pins, runtime/graphics hashes, loader
 DataFix and ZIP integrity; JIT/debug/increased-memory entitlements are present
 in the preserved native executable. See FORK.md for size/checksum. Device
 loading measurements are still pending; build 22 is retained as the baseline.
+
+## Build 23 device result, 2026-10-11
+
+The user reports the same long load, with a long flat RAM interval followed by
+growth, and intermittent loss of **all** game audio after the voiced intro.
+The supplied `madeira-log (3).txt` identifies build 23. This is not a successful
+device speedup result. It does not include exact user-marked load boundaries.
+
+Deduplicated `[xp]` samples show:
+
+| Device-local interval | Process footprint | Process CPU / elapsed | Physical disk reads |
+|---|---|---|---|
+| 00:06:30–00:07:30 | 1,974 → 1,975 MiB | 1.630 core equivalents | 5.176 MiB |
+| 00:07:30–00:08:30 | 1,975 → 2,338 MiB | 2.191 core equivalents | 70.430 MiB |
+
+The same guest worker, Windows TID `00e8`, repeatedly consumes 81–91% of a
+CPU while sampled in `find_file_in_dir/fstatat`, `get_dir_case_sensitivity`,
+`openat`, or file metadata handling. The plateau is therefore consistent
+with ongoing path/file work before more resources become resident, not proof
+of an idle game or a RAM allocation cap. Cached reads still make the physical
+disk counter an incomplete view of file traffic. No path/status samples from
+this stage exist in the old startup-limited failure trace, so it is not yet
+known whether the remaining work is parent-case resolution, missing resources,
+repeated probes, or predominantly successful opens. Do not add a result cache
+or change game files without that evidence.
+
+This launch also shrinks the requested 1,024 MiB JIT pool to 432 MiB because
+of address-space placement. Low Power Mode remains enabled. No cache flush
+message was found; that absence does not prove a flush could not occur. The
+repeated native file stacks are stronger evidence for the observed plateau
+than the startup small-pool warning alone.
+
+### Audio evidence and limits
+
+The persistent 48 kHz float-stereo stream starts successfully and continues
+through the log. Its 21 ten-second delivery reports show 99.7–100.3% pacing,
+zero underruns, and roughly 2,001 actual render callbacks per interval. All
+22 source-level reports are rounded to zero. A separate, short-lived SDL
+44.1 kHz stream appears with `house_of_ruin.ogv`; this is the likely intro
+audio, not directly proven by the source samples.
+
+Existing level measurement happens **after** honoring the client's
+`AUDCLNT_BUFFERFLAGS_SILENT`. It cannot distinguish the client requesting
+silence from an unflagged zero signal, nor prove missing FMOD banks. It also
+does not establish when the game should have started normal audio. No output
+buffer/session change is justified by these data.
+
+### Bounded diagnostic candidate
+
+The next candidate adds observation, not another loading/audio behavior fix:
+
+- `MADEIRA_FILE_PROFILE` defaults to 1 in this diagnostic candidate; 0 disables
+  clocks/reporting. `NtCreateFile`/`NtOpenFile`, `NtQueryAttributesFile`, and
+  `NtQueryFullAttributesFile` collect thread-local elapsed
+  lookup and total request time, complete-path hits/misses, parent-shortcut
+  attempts/hits, component visits, case queries, directory-scan attempts and
+  entries visited. Totals exclude the new report formatting/writing and the
+  older end-of-call open logging. Operation counts and path samples distinguish
+  actual opens from the two metadata queries. Nested calls are folded into the
+  outer request; other file APIs are not counted.
+- At most four lines per active thread per five seconds: totals, the costliest
+  request, the costliest failed read-open/query, and an audio-extension sample.
+  `.bank/.fsb/.fev/.wem/.wav/.ogg/.mp3` actual open successes/failures are counted separately;
+  an audio success cannot erase a failed audio sample in that interval. These
+  extensions are a diagnostic filter, not evidence of this game's bank format.
+  Paths keep at most 255 ASCII-sanitized characters (tail for long paths).
+  Reporting happens on a completed request; an idle thread's final partial
+  interval is not flushed. An indefinitely blocked request cannot report its
+  completion. Existing thread sampling remains needed for those cases.
+- Audio source reports distinguish SILENT-flagged frames, unflagged frames,
+  and sampled exact-zero/nonzero/nonfinite values. Per-stream release totals
+  cover intro streams shorter than ten seconds. The existing sample scan is
+  reused; no logging or additional locks enter the real-time mixer callback.
+
+Host checks cover disabled/nested profiling, timing and interval reset, 10,000
+calls without a log flood, audio-extension statuses, path bounds and errno.
+The 960 existing file-lookup fixtures remain equivalent. Extracted production
+audio tests verify submitted ring bytes remain unchanged, flag/zero/tiny-signal
+classification, PCM16/32, nonfinite samples, interval and short-stream reports.
+Host checks do not establish device overhead or resolve the underlying issue.
+
+The reported iOS system-clock offset in landscape remains unverified. Madeira
+does not draw the clock; it requests status-bar hiding during play and uses
+native scene rotation. A full-screen screenshot is needed to identify which
+system surface is visible before changing window/status-bar ownership.
