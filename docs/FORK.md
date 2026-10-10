@@ -151,7 +151,7 @@ gameplay, DLC loading, drag/drop, keyboard/controller and audio. Thin
 reservations remain off by default. Other unchanged inherited PE modules and
 the unchanged i386/DXMT compatibility files are explicitly not rebuilt.
 
-## Fixes and evidence as of 2026-10-07
+## Game-loading path lookup, 2026-10-10
 
 The subsequent build 22 loading investigation and Wine change `17c52803` are
 recorded in [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md). The iOS-only
@@ -161,6 +161,24 @@ between-call mutation checks pass; the targeted syscall-count reproducer drops
 from six stats to three. Neither this count nor source review measures game
 loading speed. Native build and physical-device timing are recorded separately.
 No memory, swap, shader-cache or game-file settings are changed with this fix.
+
+Native run [38067549022](https://github.com/LordierClaw/Madeira/actions/runs/38067549022)
+builds `70756cc` successfully (graphics, runtime, DXMT, app/JIT helper), with the
+unchanged LLVM artifact from `38030334310`. Host run
+[38067549685](https://github.com/LordierClaw/Madeira/actions/runs/38067549685)
+passes all three jobs, including the new file-lookup regression on Linux.
+
+Local **`Madeira-0.1.3-LoadLookup.ipa`**, version 0.1.3 **build 23**, is
+**159,095,537 bytes**, SHA-256
+`c072d8c4113e315b75e219c008e1cf5d02989ffe670a46af0de2c5fded85bd09`.
+Packaging verifies fresh source/graphics/runtime receipts, ZIP members and
+hashes, and loader DataFix. The embedded runtime receipt pins Wine `17c52803`.
+The preserved native executable carries get-task-allow, allow-jit and
+increased-memory entitlements. IPA, manifest, checksum and native archive live
+outside Git under `outputs/`; sideload signing is still required. Build 22 is
+retained for comparison. No physical-device speedup is claimed for build 23.
+
+## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable
    MSVCP140 data exports into the existing JIT mapping, preserving code thunks and

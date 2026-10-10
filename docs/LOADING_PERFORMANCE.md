@@ -68,3 +68,15 @@ timing are separate checks. Compare the same save/dungeon and DLC selection,
 keeping power mode, swap, renderer and resolution constant; then repeat the
 load in the same session. Do not combine this change with shader-cache or
 memory experiments while measuring its effect.
+
+## Built candidate
+
+Version 0.1.3 **build 23**, `Madeira-0.1.3-LoadLookup.ipa`, contains source
+`70756cc29e884ad6e7426dc44206aa2e7e70b5da` and Wine
+`17c5280304a8a113b4ceee85245362058450847c`. Native CI
+[38067549022](https://github.com/LordierClaw/Madeira/actions/runs/38067549022)
+and host CI [38067549685](https://github.com/LordierClaw/Madeira/actions/runs/38067549685)
+pass. Final packaging checks source pins, runtime/graphics hashes, loader
+DataFix and ZIP integrity; JIT/debug/increased-memory entitlements are present
+in the preserved native executable. See FORK.md for size/checksum. Device
+loading measurements are still pending; build 22 is retained as the baseline.
