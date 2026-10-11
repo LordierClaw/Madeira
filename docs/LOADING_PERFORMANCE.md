@@ -423,3 +423,80 @@ pinned ClickKeyFix compatibility input. Reading the final IPA verifies version
 and native JIT/debug/increased-memory entitlements. Artifact, manifest,
 checksum and raw logs remain outside Git. Re-sign through the sideload tool
 as usual. Device loading-speed and memory results remain pending.
+
+## Follow-up: DLC content management and persistent lookup reuse
+
+The user asks why repeated parent searches/scans are still necessary and
+suggests optimizing DLC file management. The following is a source-backed
+investigation and proposed direction, **not implemented in build 27**.
+Continue development and review directly without subagents.
+
+### Findings
+
+- Build 27 stores verified ancestor hints, not complete directory contents or
+  persistent missing-file results. It reduces repeated work per request but
+  deliberately does not yet eliminate scans between separate requests.
+- Wine already has `get_cached_dir_data` in `dlls/ntdll/unix/file.c`, used by
+  `NtQueryDirectoryFile`. That is a directory-enumeration snapshot tied to a
+  Windows handle/mask. The `lookup_unix_name` / `find_file_in_dir` path used
+  to resolve these opens does not consume it. Its lifetime and stale-snapshot
+  behavior must not be copied blindly into an open-path cache.
+- `DepotDownloader.install` already parses all selected base/DLC manifests,
+  and `prepare` derives the actual sanitized paths and folds directory
+  spelling. The install record is written after transfer completion, but
+  records depot/manifest IDs and sizes, not a runtime path index. Raw depot
+  payloads are persisted only for depots with custom executables; even these
+  are not a Wine lookup index. `DepotManifest.FileEntry` contains chunk data
+  that would be unnecessary overhead for runtime name lookup.
+- Madeira pauses its downloads during a game session
+  (`SteamOwnedLibrary.sessionChanged`). That reduces one source of changes,
+  but does not make the tree immutable: Valve's client, the game, mods and
+  native file operations can still change files.
+- Of the 27 original `00e4` worst-failure path samples in the build 26 log,
+  21 are under DLC directories, across five add-ons; six are outside DLC.
+  These are selected interval samples, not the distribution of all requests.
+  A general asset-directory lookup cache can also serve the base-game paths.
+
+### Recommended direction
+
+Use a bounded, versioned directory-name index in the runtime, with optional
+priming from the installer. On a verified cache hit, resolve names from that
+index instead of searching ancestors and enumerating the same directory
+again. Existing installations should acquire entries lazily as directories
+are actually accessed; a first launch must not simply move the same long
+full-tree scan into Madeira's loading screen.
+
+For new installs/updates, retain a compact index derived from **successfully
+installed paths after sanitization**, bound to app/depot/manifest identities
+and a completed-install generation. Publish it atomically after success and
+invalidate the old generation before modification starts. Cancellation or
+partial writes must never leave an authoritative complete index. Manifest
+absence alone cannot mean filesystem absence: mods, generated files and
+files retained from earlier versions may be present.
+
+Runtime freshness is the correctness requirement. Evaluate directory identity
+and change metadata checks, invalidation on known create/delete/rename paths,
+and native change notifications. Apple documents vnode write/attribute/
+rename/delete notifications in
+[kqueue(2)](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/kqueue.2.html).
+These are a candidate mechanism, not an existing connected Wine cache or a
+proof that notifications alone cover every race. Parent replacement, ancestor
+renames, reused root handles, modifications during enumeration and notification
+failures all need handling. A small freshness check may remain; zero system
+calls for mutable paths is not a requirement. An uncertain or stale entry
+must fall back to the normal resolver.
+
+Only names, parent relationships and minimal provenance belong in this index.
+Bound RAM and retained directory handles, evict cold entries, and avoid
+retaining manifest chunks or game asset bytes. Preserve each requested DLC
+path and the game's own fallback order; never combine distinct DLC directories
+or infer which add-on is enabled from its installed state. Keep the existing
+cross-depot collision rejection unless ordering semantics are established.
+
+Before implementation, settle the freshness contract and measured index
+budget. Acceptance checks should cover repeated absent ancestors/leaf names,
+no repeated enumeration on verified unchanged entries, base/DLC/mod paths,
+Unicode/case/short names/reparse points, files created after a cached miss,
+ancestor replacement, install interruption and bounded memory/handle usage.
+Device validation must compare the same save/configuration and report both
+lookup time and cache overhead, without attributing all RAM growth to lookup.
