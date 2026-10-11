@@ -29,6 +29,7 @@ typedef struct { UNICODE_STRING *ObjectName; } OBJECT_ATTRIBUTES;
 #define STATUS_REPARSE_RESULT 7
 #define O_RDONLY 0
 #define S_ISDIR(mode) ((mode) == 1)
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 struct stat { int st_mode; };
 struct dirent { char d_name[512]; };
 typedef struct { int node, next; struct dirent entry; } DIR;
@@ -39,9 +40,13 @@ static DIR directory;
 static int root_seen;
 static int lookup_root = 73;
 static int alternate_root;
+static int normalize_names;
+static int read_fail_once, read_fail_remaining;
+static const char *lookup_base = "root";
 static struct {
     unsigned int full_hit, full_miss, parent_try, parent_hit, components;
     unsigned int component_miss, case_query, scans, entries;
+    unsigned int prefix_hint, reparse_saved;
 } profile_counts;
 #define IOS_FILE_COUNT(n) (++profile_counts.n)
 
@@ -62,6 +67,10 @@ static int node_index(const char *path)
     assert(n < sizeof(trimmed));
     strcpy(trimmed, path);
     while (n > 1 && trimmed[n - 1] == '/') trimmed[--n] = 0;
+    /* This fixture models APFS canonical equivalence for stat/open only.
+     * Directory enumeration retains the NFC spelling stored in its node. */
+    if (normalize_names && !strcmp(trimmed, "root/normalized/e\xcc\x81link?"))
+        strcpy(trimmed, "root/normalized/\xc3\xa9link?");
     for (int i = 0; i < node_count; i++) if (equal_name(nodes[i].path, trimmed)) return i;
     return -1;
 }
@@ -94,6 +103,12 @@ static DIR *fdopendir(int fd)
 }
 static struct dirent *readdir(DIR *d)
 {
+    if (read_fail_remaining)
+    {
+        read_fail_remaining = 0;
+        errno = EIO;
+        return NULL;
+    }
     size_t n = strlen(nodes[d->node].path);
     for (; d->next < node_count; d->next++)
     {
@@ -176,10 +191,11 @@ static struct result run(lookup_fn fn, const WCHAR *path, unsigned int offset,
     char *buffer = malloc(size);
     struct result result;
     assert(buffer && size > 5);
-    strcpy(buffer, "root");
+    strcpy(buffer, lookup_base);
     stat_count = 0; reparse_pos = reparse_len = -1; root_seen = -1;
+    read_fail_remaining = read_fail_once;
     memset(&profile_counts, 0, sizeof(profile_counts));
-    result.status = fn(lookup_root, &attr, &name, offset, &buffer, size, 4, disp, open_reparse, is_unix, 0);
+    result.status = fn(lookup_root, &attr, &name, offset, &buffer, size, strlen(lookup_base), disp, open_reparse, is_unix, 0);
     result.stats = stat_count; result.pos = reparse_pos; result.length = reparse_len; result.root = root_seen;
     result.path[0] = 0;
     if (result.status == STATUS_SUCCESS || result.status == STATUS_NO_SUCH_FILE || result.status == STATUS_REPARSE_RESULT)
@@ -245,7 +261,7 @@ int main(void)
     b = run(lookup_unix_name, paths[1], 0, FILE_OPEN, 0, 0, 1024);
     assert(a.status == b.status && b.status != STATUS_SUCCESS && a.root == 74 && b.root == 74);
     lookup_root = 73;
-    /* No persistent cache: adding/removing a file is seen by the next lookup. */
+    /* No cached result: adding/removing a file is seen by the next lookup. */
     a = run(lookup_unix_name, paths[0], 0, FILE_OPEN, 0, 0, 1024);
     assert(a.status == STATUS_SUCCESS);
     assert(profile_counts.full_hit == 1 && !profile_counts.full_miss && !profile_counts.components);
@@ -266,7 +282,8 @@ int main(void)
     assert(profile_counts.case_query == 1 && profile_counts.scans == 1 && profile_counts.entries == 1);
     b = run(lookup_unix_name, paths[2], 0, FILE_OPEN, 0, 0, 1024);
     assert(b.status == STATUS_OBJECT_NAME_NOT_FOUND && profile_counts.parent_hit == 1);
-    assert(profile_counts.components == 2 && profile_counts.scans == 2 && profile_counts.entries == 4);
+    if (profile_counts.components != 2 || profile_counts.scans != 1 || profile_counts.entries != 2)
+    { puts("FAIL: normal/reparse miss scans the same directory twice"); return 1; }
     /* Device build 25: thousands of missing intermediate DLC paths, including
      * directory probes with a trailing slash. No full-parent shortcut hits. */
     const struct node dlc_tree[] = {
@@ -284,6 +301,10 @@ int main(void)
         L"Program Files (x86)\\Steam\\steamapps\\common\\DD\\dlc\\CC\\features\\districts\\modes\\radiant\\monsters\\enemy\\enemy.info.darkest",
         L"Program Files (x86)\\Steam\\steamapps\\common\\DD\\dlc\\CC\\features\\districts\\modes\\radiant\\monsters\\enemy\\fx\\"};
     nodes = dlc_tree; node_count = sizeof(dlc_tree) / sizeof(dlc_tree[0]);
+    /* An unrelated missing sibling must not pin all later probes to a shallow
+     * ancestor, bypassing the deeper search on every subsequent request. */
+    b = run(lookup_unix_name, L"Program Files (x86)\\Steam\\absent\\file", 0, FILE_OPEN, 0, 0, 1024);
+    assert(b.status == STATUS_OBJECT_PATH_NOT_FOUND);
     for (unsigned int i = 0; i < sizeof(dlc_paths) / sizeof(dlc_paths[0]); i++)
     {
         a = run(reference_lookup_unix_name, dlc_paths[i], 0, FILE_OPEN, 0, 0, 1024);
@@ -291,8 +312,122 @@ int main(void)
         assert(a.status == STATUS_OBJECT_PATH_NOT_FOUND && a.status == b.status);
         printf("stat calls for missing DLC parent%s: reference=%d optimized=%d\n", i ? " (trailing separator)" : "", a.stats,b.stats);
         if (b.stats > 8) { puts("FAIL: missing-parent probes still walk existing ancestors"); return 1; }
-        assert(profile_counts.components == 2 && profile_counts.scans == 2);
+        assert(profile_counts.components == 2 && profile_counts.scans == 1);
+        b = run(lookup_unix_name, dlc_paths[i], 0, FILE_OPEN, 0, 0, 1024);
+        printf("stat calls for repeated missing DLC parent: %d\n", b.stats);
+        if (b.stats != 4) { puts("FAIL: repeated parent search remains"); return 1; }
+        assert(profile_counts.prefix_hint == 1 && profile_counts.reparse_saved == 1);
     }
+    /* Hints are starting points, never existence/absence results. Change the
+     * parent itself, case spelling, and add a reparse file between lookups. */
+    struct node mutable_tree[] = {{"root",1}, {"root/mutable",1},
+        {"root/mutable/parent",1}, {"root/mutable/parent/NEW.json",0}};
+    const WCHAR *mutable_path = L"mutable\\parent\\new.json";
+    nodes = mutable_tree;
+    for (int scenario = 0; scenario < 7; scenario++)
+    {
+        node_count = scenario == 0 ? 3 : scenario == 1 ? 2 : 4;
+        mutable_tree[2] = (struct node){scenario == 3 ? "root/mutable/PARENT" : "root/mutable/parent", scenario == 2 ? 0 : 1};
+        mutable_tree[3] = (struct node){scenario == 4 ? "root/mutable/parent/new.json?" : "root/mutable/parent/NEW.json",0};
+        if (scenario == 2) node_count = 3; /* replace directory with a file */
+        if (scenario == 3) mutable_tree[3].path = "root/mutable/PARENT/NEW.json";
+        a = run(reference_lookup_unix_name, mutable_path, 0, FILE_OPEN, 0, 0, 1024);
+        b = run(lookup_unix_name, mutable_path, 0, FILE_OPEN, 0, 0, 1024);
+        assert(a.status == b.status && !strcmp(a.path,b.path) && a.pos == b.pos && a.length == b.length);
+        checks++;
+    }
+    /* A partial directory read must retain the original second search. Both
+     * an exact reparse spelling and its case-folded sibling must remain usable. */
+    const struct node reparse_tree[] = {{"root",1}, {"root/reparse",1},
+        {"root/reparse/link?",0}, {"root/reparse/LINK?",0}, {"root/reparse/LINK",0}};
+    nodes = reparse_tree;
+    for (node_count = 3; node_count <= 5; node_count++)
+    for (int rp = 0; rp < 2; rp++)
+    for (read_fail_once = 0; read_fail_once < 2; read_fail_once++)
+    {
+        a = run(reference_lookup_unix_name, L"reparse\\link", 0, FILE_OPEN, rp, 0, 1024);
+        b = run(lookup_unix_name, L"reparse\\link", 0, FILE_OPEN, rp, 0, 1024);
+        assert(a.status == b.status && !strcmp(a.path,b.path) && a.pos == b.pos && a.length == b.length);
+        checks++;
+    }
+    read_fail_once = 0;
+    /* Same resulting Unix prefix but a different root buffer/NT start offset. */
+    nodes = tree; node_count = ARRAY_SIZE(tree);
+    lookup_base = "root/Games";
+    a = run(reference_lookup_unix_name, L"DD\\dlc\\assets\\link", 0, FILE_OPEN, 0, 0, 1024);
+    b = run(lookup_unix_name, L"DD\\dlc\\assets\\link", 0, FILE_OPEN, 0, 0, 1024);
+    assert(a.status == b.status && !strcmp(a.path,b.path) && a.pos == b.pos && a.length == b.length);
+    lookup_base = "root";
+    checks++;
+    /* A previously missing child can become a deep tree. Relearn it after
+     * the first successful child walk, instead of retaining a shallow hint. */
+    const struct node growing_tree[] = {{"root",1}, {"root/growing",1},
+        {"root/growing/a",1}, {"root/growing/a/b",1}, {"root/growing/a/b/c",1}};
+    nodes = growing_tree; node_count = 2;
+    b = run(lookup_unix_name, L"growing\\a\\b\\c\\missing", 0, FILE_OPEN, 0, 0, 1024);
+    assert(b.status == STATUS_OBJECT_PATH_NOT_FOUND);
+    node_count = ARRAY_SIZE(growing_tree);
+    for (int attempt = 0; attempt < 3; attempt++)
+    {
+        a = run(reference_lookup_unix_name, L"growing\\a\\b\\c\\missing", 0, FILE_OPEN, 0, 0, 1024);
+        b = run(lookup_unix_name, L"growing\\a\\b\\c\\missing", 0, FILE_OPEN, 0, 0, 1024);
+        assert(a.status == b.status && !strcmp(a.path,b.path));
+        if (attempt == 2) assert(b.stats == 4 && profile_counts.prefix_hint == 1);
+        checks++;
+    }
+    /* More independent directory keys than the bounded hint table. Eviction
+     * must change cost only, including when an old key is revisited. */
+    char rotating_name[80];
+    WCHAR rotating_path[80];
+    struct node rotating_tree[] = {{"root",1}, {rotating_name,1}};
+    nodes = rotating_tree; node_count = ARRAY_SIZE(rotating_tree);
+    for (int index = 0; index <= 40; index++)
+    {
+        snprintf(rotating_name, sizeof(rotating_name), "root/rotation%02d", index % 40);
+        swprintf(rotating_path, ARRAY_SIZE(rotating_path), L"rotation%02d\\missing", index % 40);
+        a = run(reference_lookup_unix_name, rotating_path, 0, FILE_CREATE, 0, 0, 1024);
+        b = run(lookup_unix_name, rotating_path, 0, FILE_CREATE, 0, 0, 1024);
+        assert(a.status == b.status && !strcmp(a.path,b.path));
+        checks++;
+    }
+    /* Long prefixes bypass fixed hint storage without truncation or a stale
+     * byte/component offset. Each component is still below the Wine limit. */
+    struct node long_tree[13];
+    char long_names[13][1024];
+    WCHAR long_path[1024];
+    strcpy(long_names[0], "root");
+    long_tree[0] = (struct node){long_names[0],1};
+    for (int index = 1; index < 13; index++)
+    {
+        snprintf(long_names[index], sizeof(long_names[index]), "%s/abcdefghij0123456789abcdefghij0123456789abcdefghij%02d", long_names[index-1], index);
+        long_tree[index] = (struct node){long_names[index],1};
+    }
+    size_t long_len = 0;
+    for (const char *p = long_names[12] + 5; *p; p++) long_path[long_len++] = *p == '/' ? '\\' : *p;
+    wcscpy(long_path + long_len, L"\\missing");
+    nodes = long_tree; node_count = ARRAY_SIZE(long_tree);
+    for (int attempt = 0; attempt < 2; attempt++)
+    {
+        a = run(reference_lookup_unix_name, long_path, 0, FILE_OPEN, 0, 0, 2048);
+        b = run(lookup_unix_name, long_path, 0, FILE_OPEN, 0, 0, 2048);
+        assert(a.status == b.status && !strcmp(a.path,b.path) && !profile_counts.prefix_hint);
+        checks++;
+    }
+    /* Apple directory decoding yields NFC, but an NT request may use NFD.
+     * A complete scan cannot replace the literal reparse stat on APFS. */
+    const struct node normalized_tree[] = {{"root",1}, {"root/normalized",1},
+        {"root/normalized/\xc3\xa9link?",0}};
+    nodes = normalized_tree; node_count = ARRAY_SIZE(normalized_tree);
+    normalize_names = 1;
+    for (int rp = 0; rp < 2; rp++)
+    {
+        a = run(reference_lookup_unix_name, L"normalized\\e\x0301link", 0, FILE_OPEN, rp, 0, 1024);
+        b = run(lookup_unix_name, L"normalized\\e\x0301link", 0, FILE_OPEN, rp, 0, 1024);
+        assert(a.status == (rp ? STATUS_SUCCESS : STATUS_REPARSE_RESULT));
+        assert(a.status == b.status && !strcmp(a.path,b.path) && a.pos == b.pos && a.length == b.length);
+        checks++;
+    }
+    normalize_names = 0;
     /* Move the missing ancestor across every search boundary, then create
      * and remove it between calls. Vary depth, root offset, disposition,
      * trailing separator and buffer size; compare the actual resolver. */

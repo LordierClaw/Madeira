@@ -303,3 +303,98 @@ the actual JIT pool reported at launch because the requested pool can shrink
 differently. Compare loading time and worker lookup time/call counts; assess
 RAM separately after reaching the same scene. No memory/cache configuration
 change is included in build 26. Physical-device results are pending.
+
+## Build 26 device result and repeated-search optimization, 2026-10-11
+
+`madeira-log (5).txt` identifies build 26. Loading is still slow. Comparing
+worker `00e4` windows with more than 2,000 calls, over 92% failures and spans
+under 5,100 ms gives the following comparable workload pattern. These are
+profiler intervals, **not user-marked whole save/dungeon loading times**:
+
+| Measurement | Build 25 | Build 26 |
+|---|---:|---:|
+| Selected windows / elapsed | 15 / 75.008 s | 11 / 55.003 s |
+| Calls / failures | 36,229 / 33,773 | 37,060 / 34,542 |
+| Lookup time | 67.250 s | 47.241 s |
+| Lookup time per call | 1,856 us | 1,275 us |
+| Verified ancestor hits | 27 | 34,542 |
+| Ancestor stat attempts | 27,729 | 156,016 |
+| Component visits / scan attempts | 357,780 / 67,546 | 69,084 / 69,084 |
+
+Build 26 reduces lookup time per call by about 31% in this selection. However,
+lookup still occupies about 86% of the selected elapsed time. It now skips
+existing ancestors successfully, but finds them anew using about 4.5 candidate
+stats per failed path and still scans the same directory twice: the normal
+name, then Wine's `?` reparse backing name. Sampled paths remain optional DLC,
+mode and asset overrides; these failures do not establish a broken DLC install.
+Native stacks still sample `fstatat`, `lookup_unix_name`, `find_file_in_dir` and
+`get_dir_case_sensitivity` on that worker. This supports optimizing this layer
+without changing the renderer, DLC selection or JIT allocator.
+
+### Memory evidence and limits
+
+During 01:50:00–01:51:00, footprint stays about 2,231–2,238 MiB. CPU averages
+about 1.7 cores, physical reads total about 8.1 MiB and page-ins total 10.
+Cached filesystem traffic is not included in physical reads. There is no
+demonstrated paging bottleneck during this plateau. Footprint subsequently
+grows while resources load. The `[xp]` sampled peak is 2,710 MiB; the faster
+`[footprint]` sampler catches 2,765 MiB. Build 25's sampled peak was 2,919 MiB.
+These sessions are not controlled RAM comparisons and cannot prove or rule
+out a leak.
+
+The actual JIT pool is 592 MiB (build 25: 624 MiB), despite the same 1,024 MiB
+request. RX/RW aliases share physical pages and must not be added together.
+The FEX allocation band's plateau dirty count is about 422–425 MiB versus
+about 574 MiB in build 25; native malloc usage remains around 86 MiB. Later
+game-cache summaries add only 110 real compilations over 98,304 lookups, which
+does not indicate a compilation storm. The existing 2 MiB-per-thread FEX L1
+cache mode is already active.
+
+A smaller per-game JIT pool could be a separate controlled RAM experiment,
+but cannot be inferred to accelerate this load. A 512 MiB pool would have
+only about 52 MiB left at the observed final head/tail usage, and different
+startup placement can shrink it further or degrade code-buffer allocation.
+Do not lower the universal default or discard executable pages based on this
+log: `virtual_ios.c` documents the iOS execution-permission problem following
+page replacement and deliberately warms those mappings. This candidate leaves
+JIT/FEX memory configuration unchanged; **no RAM reduction is claimed**.
+
+### Implementation and verification
+
+- Keep at most 32 per-thread ancestor hints in fixed storage (17,024 bytes
+  plus an index), with no retained handles or unbounded cache. Match root fd,
+  base offset and path through the next unresolved component, then freshly
+  stat the parent. Always resolve the child normally. A stale parent discards
+  the hint; a now-resolvable child retires a shallow hint so the next miss
+  relearns the deeper parent. New files and directory changes are not hidden.
+- During the normal case-insensitive directory scan, observe whether the
+  reparse spelling is present. A complete, error-free scan without a candidate
+  lets the following reparse lookup skip the duplicate scan and case query.
+  It **retains the literal native stat**, necessary for APFS normalization
+  equivalence that Wine's case comparison does not implement. Incomplete
+  reads and positive candidates retain the old fallback. Nothing caches a
+  missing result across requests; Unix-namespace paths retain their behavior.
+- Add `prefix_hint` and `reparse_saved` to bounded profile reports. The latter
+  counts duplicate scans avoided after a failed native reparse stat. Normal
+  and reparse component counters still count both lookup attempts.
+
+The missing-parent fixture takes 8 stats cold and **4 on repeated probes**,
+versus 8 each time in build 26 and 14 without the iOS shortcuts. Repeated
+probes use one directory scan instead of two. The case-mismatched positive
+leaf remains at 3 stats. A regression first demonstrated a shallow-hint cost
+of 12 stats before scoping hints to the unresolved component. Independent
+review also reproduced the Unicode reparse failure in an earlier draft;
+retaining the literal stat fixes both normal and open-reparse cases.
+
+**4,820 differential fixtures** pass with actual extracted lookup functions:
+case/UTF/reparse/short-name paths, statuses and NT offsets, root handles and
+base offsets, dispositions, buffer growth, directory/file replacement,
+new reparse entries, interrupted enumeration, deeper-tree creation, eviction
+and overlong hints. The profiler checks pass. The filesystem is mocked;
+these checks do not establish iOS latency or real game speedup. Device logs,
+analysis scripts and their derived JSON remain outside Git.
+
+Retest the same save/dungeon, DLC, renderer and Low Power Mode setting after
+building this candidate. Record elapsed load time and collect a log after
+reaching the same scene. Compare lookup time/call, `prefix_hint`,
+`reparse_saved`, scans and actual JIT pool separately from final footprint.

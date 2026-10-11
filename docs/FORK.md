@@ -296,6 +296,18 @@ change is included. Device logs/configuration are kept outside Git.
 
 ## Rebuild instead of committing binaries
 
+The 2026-10-11 build 26 device follow-up still spends about 86% of selected
+high-failure worker intervals in path lookup. Wine `7a940b7f` adds 32 bounded,
+freshly revalidated ancestor hints per thread and reuses an error-free
+directory observation to avoid scanning twice for normal/reparse misses.
+The literal reparse stat is retained for APFS Unicode normalization. The host
+reproducer reduces repeated missing-parent probes from 8 stats/two scans to
+4 stats/one scan; 4,820 differential cases pass. JIT/FEX memory defaults are
+unchanged: the log does not show paging as the plateau bottleneck or establish
+a leak. No RAM reduction or whole-game speedup is claimed before retesting.
+Full diagnosis, limitations and the next build receipt are in
+[LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md).
+
 Follow [BUILDING.md](BUILDING.md) with the pinned submodules. Rebuild native app
 code, `ntdll.dll` and `opengl32.dll` before packaging. Inherited tracked binaries
 do **not** contain these new source changes; build outputs are local only.

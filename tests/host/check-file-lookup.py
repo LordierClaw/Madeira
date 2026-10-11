@@ -28,7 +28,8 @@ reference = lookup.replace('lookup_unix_name(', 'reference_lookup_unix_name(', 1
 with tempfile.TemporaryDirectory(prefix='madeira-file-lookup-') as directory:
     temp = Path(directory)
     (temp / 'lookup.inc').write_text(
-        function('find_file_in_dir') + '\n#undef WINE_IOS\n' + reference
+        source[source.index('struct file_lookup_reparse\n'):source.index('static NTSTATUS find_file_in_dir(')]
+        + function('find_file_in_dir') + '\n#undef WINE_IOS\n' + reference
         + '\n#define WINE_IOS 1\n' + lookup, encoding='utf-8')
     (temp / 'test.c').write_bytes((root / 'tests/host/file-lookup.c').read_bytes())
     exe = temp / ('test.exe' if os.name == 'nt' else 'test')
