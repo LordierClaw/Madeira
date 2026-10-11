@@ -1,5 +1,8 @@
 # Working on this fork
 
+- User preference: develop and review directly without subagents unless the
+  user explicitly asks for delegation. Verify the native build and packaged
+  IPA before handoff; distinguish host checks from device performance results.
 - This is the maintained checkout of `LordierClaw/Madeira`, branch `ui-ux`.
   `origin` is our fork; `upstream` is `willfaust/Madeira`; `c-gow` is an OpenGL reference.
 - Wine changes belong in the `wine` submodule, `LordierClaw/Madeira-wine`, branch

@@ -30,11 +30,12 @@ and `backup/pre-cgow-2026-10-10` in the parent. Full FEX, DXMT, Dock, LuaJIT,
 Mesa and MoltenVK pins are in the JSON. Wine already contains the c-gow
 OpenGL implementation; **do not reapply `patches/wine-opengl-winios.patch`**.
 
-Latest verified output is **build 26**, source `a62c24e`,
-[native run 38075335460](https://github.com/LordierClaw/Madeira/actions/runs/38075335460).
-The local `outputs/Madeira-0.1.3-LoadAncestor.ipa` and adjacent manifest/checksum
+Latest verified output is **build 27**, source `0e2f884`,
+[native run 38112018449](https://github.com/LordierClaw/Madeira/actions/runs/38112018449).
+The local `outputs/Madeira-0.1.3-LoadReuse.ipa` and adjacent manifest/checksum
 are outside Git. Full size/hash and remaining device checks are in FORK.md and
-the JSON's `latest_build` field. It adds the missing-parent optimization and retains bounded file/audio diagnostics;
+the JSON's `latest_build` field. It adds bounded verified ancestor hints and
+duplicate reparse-scan removal, retaining bounded file/audio diagnostics;
 follow [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md) for evidence and retesting.
 
 ## Fork differences to preserve

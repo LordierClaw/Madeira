@@ -345,7 +345,11 @@ out a leak.
 The actual JIT pool is 592 MiB (build 25: 624 MiB), despite the same 1,024 MiB
 request. RX/RW aliases share physical pages and must not be added together.
 The FEX allocation band's plateau dirty count is about 422–425 MiB versus
-about 574 MiB in build 25; native malloc usage remains around 86 MiB. Later
+about 574 MiB in build 25; native malloc usage is around 86 MiB during the
+plateau and reaches 100 MiB near the end. Final footprint settles to 2,690 MiB
+after the 2,765 MiB fast sample, while compressed memory rises to 642 MiB.
+This later compression is distinct from the earlier flat loading interval.
+Later
 game-cache summaries add only 110 real compilations over 98,304 lookups, which
 does not indicate a compilation storm. The existing 2 MiB-per-thread FEX L1
 cache mode is already active.
@@ -398,3 +402,24 @@ Retest the same save/dungeon, DLC, renderer and Low Power Mode setting after
 building this candidate. Record elapsed load time and collect a log after
 reaching the same scene. Compare lookup time/call, `prefix_hint`,
 `reparse_saved`, scans and actual JIT pool separately from final footprint.
+
+### Built candidate: version 0.1.3 build 27
+
+Native [run 38112018449](https://github.com/LordierClaw/Madeira/actions/runs/38112018449)
+and all three host jobs in
+[run 38112011394](https://github.com/LordierClaw/Madeira/actions/runs/38112011394)
+pass for source `0e2f884fbda132e78acbedf57e142bbd82494042`, Wine
+`7a940b7fa3bf67b66f7a30bf225fd3fe3b38941b`. Runtime is freshly rebuilt;
+LLVM is reused from `38030334310` and graphics/DXMT use matching recipe caches.
+Native archive: **97,056,659 bytes**, SHA-256
+`d135f06b98d775d2885f85314be6896e343c6adedabd189ccd4dfc7920f92264`.
+
+Local IPA: `Madeira-0.1.3-LoadReuse.ipa`, **159,105,657 bytes**, SHA-256
+`fded79acafbf1225dd67ca2e635fa86acf108e95113c443c83b630a4cec5f131`.
+The local packager passes ZIP integrity, payload hashes, source/runtime/
+graphics receipts and rebuilt-file precedence using the unchanged checksum-
+pinned ClickKeyFix compatibility input. Reading the final IPA verifies version
+27, the exact source/Wine pins, new `prefix_hint`/`reparse_saved` diagnostics,
+and native JIT/debug/increased-memory entitlements. Artifact, manifest,
+checksum and raw logs remain outside Git. Re-sign through the sideload tool
+as usual. Device loading-speed and memory results remain pending.

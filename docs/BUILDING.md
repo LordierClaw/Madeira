@@ -1,18 +1,21 @@
-# Fork build workflow (updated 2026-10-10)
+# Fork build workflow (updated 2026-10-11)
 
 Use [UPDATING.md](UPDATING.md) and [upstream-state.json](upstream-state.json)
 for the maintained source pins, fork differences and update checklist. The
 build records below preserve the earlier IPA history; the current workflow
 also builds graphics and the refreshed PE set described below.
 
-Latest completed package: **0.1.3 build 22**, source
-`283ecb913804f223a8d5214f7ac4587125a7e523`,
-[successful native run](https://github.com/LordierClaw/Madeira/actions/runs/38034074592).
-`Madeira-0.1.3-Upstream-OpenGL.ipa`: 159,096,870 bytes, SHA-256
-`a0b09734d864a5bff28f2c8ac7600c24da43647abe3dca8dece5d712b86b11c8`.
-Graphics, runtime receipts, package integrity and JIT entitlements passed;
-physical-device validation is pending. See [FORK.md](FORK.md) for build inputs
-and [the ledger](superpowers/plans/2026-10-10-updated-ipa.md) for resolved failures.
+Latest completed package: **0.1.3 build 27**, source
+`0e2f884fbda132e78acbedf57e142bbd82494042`,
+[successful native run](https://github.com/LordierClaw/Madeira/actions/runs/38112018449).
+`Madeira-0.1.3-LoadReuse.ipa`: 159,105,657 bytes, SHA-256
+`fded79acafbf1225dd67ca2e635fa86acf108e95113c443c83b630a4cec5f131`.
+All three host CI jobs, graphics/runtime receipts, package integrity and native
+JIT entitlements pass; physical-device timing/RAM validation is pending. See
+[FORK.md](FORK.md) for build inputs and history, and
+[LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md) for the measured bottleneck,
+targeted correction and retesting. The earlier upstream build's resolved
+failures remain in [the ledger](superpowers/plans/2026-10-10-updated-ipa.md).
 
 [Native app build passed](https://github.com/LordierClaw/Madeira/actions/runs/37581572994) for source commit
 `dbcd1cef656db048de9dfc27ec6b37b99a71ea42`. LLVM and native dependencies came

@@ -85,15 +85,15 @@
     "i386-windows/xinputuap.dll"
   ],
   "latest_build": {
-    "source_commit": "a62c24ee8dc6c94928926596004ff63fc5a2fa72",
-    "native_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38075335460",
-    "host_checks_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38075335110",
+    "source_commit": "0e2f884fbda132e78acbedf57e142bbd82494042",
+    "native_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38112018449",
+    "host_checks_ci": "https://github.com/LordierClaw/Madeira/actions/runs/38112011394",
     "version": "0.1.3",
-    "build": "26",
-    "ipa": "Madeira-0.1.3-LoadAncestor.ipa",
-    "ipa_bytes": 159101136,
-    "ipa_sha256": "696eeb91c462f549443abf4459b7be9f3ad61e09f374377b275a5515664d42ba",
-    "device_validation": "Build 26 remains slow. Comparable profile windows show lower per-call lookup time but repeated ancestor searches and duplicate scans still dominate. RAM differs with actual JIT pool and FEX allocations; no demonstrated paging bottleneck or proven leak. New source optimization awaits native build and device timing. See docs/LOADING_PERFORMANCE.md.",
+    "build": "27",
+    "ipa": "Madeira-0.1.3-LoadReuse.ipa",
+    "ipa_bytes": 159105657,
+    "ipa_sha256": "fded79acafbf1225dd67ca2e635fa86acf108e95113c443c83b630a4cec5f131",
+    "device_validation": "Build 27 native/host/package checks pass; device timing and RAM results pending. Build 26 remains slow with repeated path searches dominating measured intervals. New bounded hints and duplicate scan reuse reduce host reproducer work, not a measured game speedup or RAM reduction. See docs/LOADING_PERFORMANCE.md.",
     "local_only": true
   }
 }

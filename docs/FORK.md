@@ -240,6 +240,30 @@ receipts and fresh runtime/graphics precedence. Reading the final IPA confirms
 version 26, source/Wine pins, diagnostic markers and JIT/debug/increased-memory
 entitlements. Device load-time and memory results for build 26 remain pending.
 
+## Repeated-path loading optimization, 2026-10-11
+
+The build 26 follow-up identifies repeated ancestor searches and duplicate
+normal/reparse directory scans as the remaining measured loading bottleneck.
+Wine `7a940b7f` uses bounded, freshly verified prefix hints and reuses the
+same-call directory observation while retaining APFS's literal reparse stat.
+The 4,820 differential host fixtures and all three
+[host CI jobs](https://github.com/LordierClaw/Madeira/actions/runs/38112011394)
+pass. The representative repeated miss falls from 8 stats/two scans to
+4 stats/one scan. No JIT/FEX memory default is changed; this is not a measured
+RAM reduction or whole-game speedup.
+
+[Native run 38112018449](https://github.com/LordierClaw/Madeira/actions/runs/38112018449)
+passes for source `0e2f884fbda132e78acbedf57e142bbd82494042`, Wine
+`7a940b7fa3bf67b66f7a30bf225fd3fe3b38941b`. Local **build 27** is
+`Madeira-0.1.3-LoadReuse.ipa`, **159,105,657 bytes**, SHA-256
+`fded79acafbf1225dd67ca2e635fa86acf108e95113c443c83b630a4cec5f131`.
+Runtime is fresh; LLVM/graphics/DXMT reuse verified recipes. ZIP/hash/source/
+runtime/graphics checks pass, and the final IPA verifies new diagnostic
+markers, version/pins and native JIT/debug/increased-memory entitlements.
+The checksum-pinned local compatibility input is unchanged and remains
+outside Git. Device load-time/RAM results are pending; full evidence and
+retest instructions are in [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md).
+
 ## Fixes and evidence as of 2026-10-07
 
 1. **ARM64EC data exports:** Wine's `dlls/ntdll/loader.c` redirects eligible writable
