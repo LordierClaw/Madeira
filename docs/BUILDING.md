@@ -5,11 +5,11 @@ for the maintained source pins, fork differences and update checklist. The
 build records below preserve the earlier IPA history; the current workflow
 also builds graphics and the refreshed PE set described below.
 
-Latest completed package: **0.1.3 build 27**, source
-`0e2f884fbda132e78acbedf57e142bbd82494042`,
-[successful native run](https://github.com/LordierClaw/Madeira/actions/runs/38112018449).
-`Madeira-0.1.3-LoadReuse.ipa`: 159,105,657 bytes, SHA-256
-`fded79acafbf1225dd67ca2e635fa86acf108e95113c443c83b630a4cec5f131`.
+Latest completed package: **0.1.3 build 29**, source
+`d25a5d9852ad85f7b7ea2ead38da0fe551e1edc3`,
+[successful native run](https://github.com/LordierClaw/Madeira/actions/runs/38115986505).
+`Madeira-0.1.3-ContentIndex.ipa`: 159,119,672 bytes, SHA-256
+`bc8cc16e42b4eb7c27dbbe69eeb05029e0c360a5019d47f70fe705e81753e33c`.
 All three host CI jobs, graphics/runtime receipts, package integrity and native
 JIT entitlements pass; physical-device timing/RAM validation is pending. See
 [FORK.md](FORK.md) for build inputs and history, and

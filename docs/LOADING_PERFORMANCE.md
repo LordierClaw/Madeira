@@ -552,3 +552,32 @@ Compare the same save/DLC/renderer settings, lookup time and index hit/fallback
 counts against build 27. The new RAM budget limits index overhead, not game/FEX
 allocations. Optional installer priming of Wine names is intentionally omitted:
 an installed-file manifest cannot certify directory completeness after mod edits.
+
+### Verified package: build 29
+
+Source `d25a5d9852ad85f7b7ea2ead38da0fe551e1edc3`, Wine
+`8b948ac0a8c6867e77efe749edddb061f2d410a2`. Developed and reviewed directly,
+without subagents. The Wine commit adds process-wide, bounded directory names
+validated by fresh path metadata and native vnode events. The app commits add
+bounded, versioned verified-file catalogs, force-verify Repair and metadata
+reuse in preparation. See [LOADING_PERFORMANCE.md](LOADING_PERFORMANCE.md) and
+[implementation ledger](superpowers/plans/2026-10-11-content-index.md).
+
+All three [host jobs](https://github.com/LordierClaw/Madeira/actions/runs/38115441553) pass, including real Darwin filesystem/vnode
+checks under ASan/UBSan and Steam catalog mutation/repair/all-missing-DLC tests.
+[Native build 29](https://github.com/LordierClaw/Madeira/actions/runs/38115986505) passes, using LLVM from 38030334310 and the freshly
+built Wine/PE runtime from successful run 38115187333. Matching recipes and
+submodule pins were checked before reuse; graphics/DXMT recipe caches match.
+The preceding build 28 is an intermediate artifact, not the delivered IPA.
+
+Native archive: 97,087,299 bytes, SHA-256
+`c133d31a2f019b860fe7c6342c89e17d21e527922eef82dcb69230a955c25b0b`.
+Local IPA: `Madeira-0.1.3-ContentIndex.ipa`, **159,119,672 bytes**, SHA-256
+`bc8cc16e42b4eb7c27dbbe69eeb05029e0c360a5019d47f70fe705e81753e33c`.
+Packaging uses the unchanged checksum-pinned ClickKeyFix compatibility input.
+ZIP integrity, all payload hashes, rebuilt-file precedence, source/runtime/
+graphics receipts and native JIT/debug/increased-memory entitlements pass.
+Final binary inspection confirms the directory-index and Steam-index markers.
+Artifacts, compatibility payloads and raw logs remain outside Git. Re-sign
+through the sideload tool as usual. Device load time and total RAM comparison
+against build 27 remain pending; host scan reductions are not a device speedup.
