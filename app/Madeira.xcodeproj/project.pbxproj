@@ -27,7 +27,7 @@
 		A1000600 /* SteamInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000600 /* SteamInstall.swift */; };
 		A1000609 /* SwiftSteam/Content/ContentDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000609 /* ContentDecryptor.swift */; };
 		A100060A /* SwiftSteam/Content/DepotDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200060A /* DepotDownloader.swift */; };
-		A100062F /* SteamFileIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200062F /* SteamFileIndex.swift */; };
+		A100062F /* SwiftSteam/Content/SteamFileIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200062F /* SteamFileIndex.swift */; };
 		A100060B /* SwiftSteam/Content/DepotManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200060B /* DepotManifest.swift */; };
 		A100060E /* SwiftSteam/Install/AppManifestWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200060E /* AppManifestWriter.swift */; };
 		A100060F /* SwiftSteam/chunk_zip.c in Sources */ = {isa = PBXBuildFile; fileRef = A200060F /* chunk_zip.c */; };
@@ -757,7 +757,7 @@
 				A1000600 /* SteamInstall.swift in Sources */,
 				A1000609 /* SwiftSteam/Content/ContentDecryptor.swift in Sources */,
 				A100060A /* SwiftSteam/Content/DepotDownloader.swift in Sources */,
-				A100062F /* SteamFileIndex.swift in Sources */,
+				A100062F /* SwiftSteam/Content/SteamFileIndex.swift in Sources */,
 				A100060B /* SwiftSteam/Content/DepotManifest.swift in Sources */,
 				A100060E /* SwiftSteam/Install/AppManifestWriter.swift in Sources */,
 				A100060F /* SwiftSteam/chunk_zip.c in Sources */,
