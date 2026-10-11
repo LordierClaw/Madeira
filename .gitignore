@@ -86,6 +86,7 @@ build/d3d11-triangle/triangle.exe
 
 # DXMT test-suite per-test build output
 tests/dxmt/out/
+tests/dxmt/out-x64/
 
 # Wineboot subprocesses — dormant while Phase 3+ uses a pre-seeded prefix
 # and skips wineboot. Rebuilt from the wine submodule if needed (requires
