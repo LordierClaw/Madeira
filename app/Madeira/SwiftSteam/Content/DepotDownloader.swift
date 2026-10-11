@@ -432,9 +432,12 @@ final class DepotDownloader {
                 }
                 try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 var before = stat()
-                let hadContent = stat(url.path, &before) == 0 && before.st_size > 0
+                let existed = stat(url.path, &before) == 0
+                let hadContent = existed && before.st_size > 0
                 let key = SteamFileIndex.key(depot: plan.depotID, manifest: plan.manifestGID, path: url.path)
-                let stamp = SteamFileIndex.stamp(url.path)
+                // Reuse the metadata preparation already needed, rather than
+                // issuing a second stat solely to create an index record.
+                let stamp = existed ? SteamFileIndex.stamp(info: before) : nil
                 // Capture only the bounded first set; excess files follow the
                 // normal verifier without retaining additional fingerprints.
                 if let stamp { result.candidates.append(key: key, stamp: stamp) }

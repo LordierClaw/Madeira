@@ -42,7 +42,12 @@ struct SteamFileIndex: Sendable {
     /// after editing a mod cannot make that file appear unchanged.
     static func stamp(_ path: String) -> Data? {
         var info = stat()
-        guard stat(path, &info) == 0, (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG), info.st_size >= 0 else { return nil }
+        guard stat(path, &info) == 0 else { return nil }
+        return stamp(info: info)
+    }
+
+    static func stamp(info: stat) -> Data? {
+        guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG), info.st_size >= 0 else { return nil }
         #if canImport(Glibc)
         let modified = info.st_mtim, changed = info.st_ctim
         #else
