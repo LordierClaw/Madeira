@@ -67,6 +67,7 @@ enum SteamInstallFiles {
             }
         }
         try? fm.removeItem(at: recordURL)
+        try? fm.removeItem(at: steamApps.appendingPathComponent("depotcache/madeira/\(appID).files-v1"))
         try? fm.removeItem(at: steamApps.appendingPathComponent("downloading/\(appID)", isDirectory: true))
     }
 

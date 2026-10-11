@@ -43,6 +43,8 @@ INT_READERS = {"madeira_cfg_int", "mad_cfg_int_pe"}
 # Titles, kinds and fixed choices for options with a dedicated Settings row.
 # "choices" are (value, label); the empty value means "remove the key".
 OVERLAY = {
+    "env.MADEIRA_DIRECTORY_INDEX": {"title": "Asset directory index", "kind": "bool", "default": "1",
+                "note": "Reuse directory names while loading. Watches file changes; capped at 2 MiB of names. Disable to compare with the normal resolver."},
     "env.MADEIRA_FILE_PROFILE": {"title": "File loading diagnostics", "kind": "bool", "default": "1",
                 "note": "Diagnostic build: summarize file opens and metadata queries at most once per thread every five seconds. Includes sampled paths and audio-file open results in the local log. 0 disables timing/reporting; restart Madeira after changing."},
     "env.MADEIRA_THIN_RESERVE": {"title": "Experimental thin reservations", "kind": "bool", "default": "0",

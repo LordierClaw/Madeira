@@ -500,3 +500,55 @@ Unicode/case/short names/reparse points, files created after a cached miss,
 ancestor replacement, install interruption and bounded memory/handle usage.
 Device validation must compare the same save/configuration and report both
 lookup time and cache overhead, without attributing all RAM growth to lookup.
+
+### Implemented candidate: bounded live names and verified-file reuse
+
+Wine now builds name indexes lazily from actual directory contents. A process
+shares 32 LRU slots, each with at most 64 KiB of packed UTF/native names and
+hash buckets (2 MiB payload total, less than 64 KiB fixed metadata). Each slot
+retains one vnode watch descriptor; one kqueue and at most one temporary
+enumeration descriptor are additional. No manifest chunks or asset bytes enter
+this cache. A busy cache mutex falls back instead of queuing callers behind an
+index build. `env.MADEIRA_DIRECTORY_INDEX=0` selects the prior resolver.
+
+Every reused entry requires a fresh native path stat (identity, permissions,
+nanosecond mtime/ctime) and a nonblocking vnode-event poll. Watches are installed
+before enumeration; complete EOF, stable path identity and no changes are
+required before publication. Mod/DLC create/delete/rename, parent replacement
+and reused root handles invalidate or select a different entry. Read/watch/
+allocation failures fall back. Oversized directories remember admission failure
+until a change, rather than repeatedly constructing a doomed index. The exact
+native probe, literal reparse probe, short-name fallback and original first
+case-collision ordering remain. Unix-namespace paths bypass the index.
+
+The installer maintains a separate, versioned verification hint at
+`steamapps/depotcache/madeira/<appID>.files-v1`. Its fixed-width records identify
+depot, manifest and sanitized absolute path, plus file identity, size, owner,
+mode, mtime and ctime. At most 16,384 records (1,507,328 bytes plus 28 bytes of
+framing/checksum) are retained per catalog; fixed-size Data buffers and sorting
+indices bound additional memory, independent of manifest or path-string size.
+Excess files simply use normal verification. Existing manifest/chunk planning
+memory is unchanged. The catalog does not become authoritative for runtime
+absence: mods and retained assets may be outside Steam's manifests.
+
+Preparation loads the prior catalog, removes it before changing files, and
+reuses only exact fingerprint/manifest matches. Unsealed chunks are checked
+even if an older resume journal marks them complete (a mod may have changed
+them while paused). Repair bypasses the catalog. Successful completion publishes
+atomically only unchanged, fully verified files that needed no chunk writes;
+newly downloaded files become eligible at a later verification. This avoids
+an extra content pass solely for indexing. Cancellation/failure before completion
+leaves no authoritative generation. Uninstall removes the catalog.
+
+`[file-profile]` adds `index_hit`, `index_build`, `index_stale`, `index_fallback`.
+`[steam-index]` records bounded file/record counts, reuse and hashed chunks.
+Local fault-injection checks show 10,000 repeated absent-name queries with no
+new scan after warming; the pre-existing 4,820 differential cases still pass.
+Darwin vnode/normalization checks and Swift transfer/catalog integration run in
+CI. Native build, final IPA inspection and device timing remain separate gates.
+
+No device speedup or total game RAM reduction is claimed from these tests.
+Compare the same save/DLC/renderer settings, lookup time and index hit/fallback
+counts against build 27. The new RAM budget limits index overhead, not game/FEX
+allocations. Optional installer priming of Wine names is intentionally omitted:
+an installed-file manifest cannot certify directory completeness after mod edits.

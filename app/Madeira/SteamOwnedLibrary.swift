@@ -1085,8 +1085,20 @@ final class SteamOwnedLibrary: ObservableObject {
     /// already on disk by its SHA-1 before fetching it.
     func repair(_ appID: Int) {
         SteamLog.event("[steam-repair] app=\(appID) requested=1")
+        forceVerify.insert(appID)
+        if let current = active, current.id == appID {
+            current.task.cancel()
+            Task { @MainActor in
+                await current.task.value
+                self.forceVerify.insert(appID)
+                self.install(appID)
+            }
+            return
+        }
         install(appID)
     }
+
+    private var forceVerify: Set<Int> = []
 
     /// Removes an install that Madeira's downloads own (its library folder is
     /// Madeira Dock's own), with its library entry (its per-game settings).
@@ -1124,12 +1136,14 @@ final class SteamOwnedLibrary: ObservableObject {
                 throw SteamError.appInfoNotFound(UInt32(appID))
             }
             try FileManager.default.createDirectory(at: SteamInstallPaths.common(drive: Self.drive), withIntermediateDirectories: true)
-            let folder = try await downloader.install(info, steamApps: Self.steamApps,
+            let verifying = forceVerify.contains(appID)
+            let folder = try await downloader.install(info, steamApps: Self.steamApps, forceVerify: verifying,
                                                       ownedDepots: { [weak self] in try? await self?.fetcher.ownedDepotIDs() }) { [weak self] progress in
                 self?.downloads[appID]?.progress = progress
                 SteamDownloadBackground.shared.progress(progress)
             }
             downloads[appID] = nil
+            if verifying { forceVerify.remove(appID) }
             // The install record is written last: the game is now "installed" for Dock, and it
             // gets its library entry (its Game details page and settings; an existing one is kept).
             LibraryModel.shared.upsertSteam(DockGame(id: appID, name: info.name, installDir: folder.lastPathComponent,

@@ -147,7 +147,7 @@ final class DepotDownloader {
     /// Download an app into `steamApps/common/<installdir>` and write its
     /// appmanifest. Returns the install folder. Throws CancellationError when
     /// the calling task is cancelled; completed chunks stay journaled.
-    func install(_ app: SteamAppInfo, steamApps: URL,
+    func install(_ app: SteamAppInfo, steamApps: URL, forceVerify: Bool = false,
                  ownedDepots: @escaping () async -> Set<UInt32>? = { nil },
                  progress report: @escaping (SteamDownloadProgress) -> Void) async throws -> URL {
         let depots = app.installDepots()
@@ -220,8 +220,10 @@ final class DepotDownloader {
         // 2. Prepare and verify local content before defining the network
         // transfer's denominator. Installing DLC reuses the base game's bytes;
         // those must never look like an impossibly fast network download.
+        let catalogURL = SteamFileIndex.url(appID: Int(app.appID), steamApps: steamApps)
         let preparation = Task.detached(priority: .userInitiated) {
-            try Self.prepare(plans: plans, installURL: installURL, journalDir: journalDir)
+            try Self.prepare(plans: plans, installURL: installURL, journalDir: journalDir,
+                             catalogURL: catalogURL, forceVerify: forceVerify)
         }
         var prepared = try await withTaskCancellationHandler {
             try await preparation.value
@@ -282,6 +284,7 @@ final class DepotDownloader {
         }
 
         // 4. Install record. Sizes come from the manifests; no tree walk.
+        try Task.checkCancellation()
         transfer.finish()
         let installed = plans.map { plan in
             AppManifestWriter.InstalledDepot(depotID: Int(plan.depotID), manifestGID: plan.manifestGID,
@@ -327,6 +330,18 @@ final class DepotDownloader {
             SteamLog.event("[steam-shared-record] app=\(app.appID) shared=\(shared.count) owners-written=\(written) owners-skipped=\(skipped)")
         }
         try? FileManager.default.removeItem(at: journalDir)
+        // All content and install records succeeded. Seal only files whose
+        // original fingerprint still matches and which needed no chunk writes.
+        let completed = prepared
+        let indexing = Task.detached(priority: .utility) {
+            try Self.publishIndex(completed, plans: plans, to: catalogURL)
+        }
+        // An index is optional: a failure only means hashing on the next run.
+        do {
+            try await withTaskCancellationHandler { try await indexing.value }
+                onCancel: { indexing.cancel() }
+        }
+        catch { SteamLog.event("[steam-index] publish-failed app=\(app.appID)") }
         SteamLog.event("[steam-depot] install complete app=\(app.appID) bytes=\(prepared.totalUncompressed) seconds=\(Int(Date().timeIntervalSince(started)))")
         return installURL
     }
@@ -366,9 +381,12 @@ final class DepotDownloader {
         var totalUncompressed: UInt64 = 0
         var remainingUncompressed: UInt64 = 0
         var fileCount = 0
+        var candidates = SteamFileIndex()
+        var indexedFiles = 0
     }
 
-    private nonisolated static func prepare(plans: [DepotPlan], installURL: URL, journalDir: URL) throws -> Prepared {
+    private nonisolated static func prepare(plans: [DepotPlan], installURL: URL, journalDir: URL,
+        catalogURL: URL? = nil, forceVerify: Bool = false) throws -> Prepared {
         let fm = FileManager.default
         var result = Prepared()
         var folded: [String: String] = [:]   // lowercased relative dir -> first spelling
@@ -385,6 +403,9 @@ final class DepotDownloader {
                 fileOwners[path.lowercased()] = plan.depotID
             }
         }
+        let previous = forceVerify ? SteamFileIndex() : SteamFileIndex.load(catalogURL)
+        // Invalidate before any file resize or write, after collision preflight.
+        if let catalogURL, fm.fileExists(atPath: catalogURL.path) { try fm.removeItem(at: catalogURL) }
         let journalNames = Set(plans.map { "depot_\($0.depotID)_\($0.manifestGID).journal" })
         // A journal for an older manifest describes different file contents.
         for name in (try? fm.contentsOfDirectory(atPath: journalDir.path)) ?? [] where !journalNames.contains(name) {
@@ -393,7 +414,6 @@ final class DepotDownloader {
         for plan in plans {
             try Task.checkCancellation()
             let journalURL = journalDir.appendingPathComponent("depot_\(plan.depotID)_\(plan.manifestGID).journal")
-            let done = JournalWriter.load(journalURL)
             var paths: [String] = []
             var existing: [Bool] = []
             var pending: [WorkItem] = []
@@ -413,6 +433,14 @@ final class DepotDownloader {
                 try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 var before = stat()
                 let hadContent = stat(url.path, &before) == 0 && before.st_size > 0
+                let key = SteamFileIndex.key(depot: plan.depotID, manifest: plan.manifestGID, path: url.path)
+                let stamp = SteamFileIndex.stamp(url.path)
+                // Capture only the bounded first set; excess files follow the
+                // normal verifier without retaining additional fingerprints.
+                if let stamp { result.candidates.append(key: key, stamp: stamp) }
+                let indexed = stamp != nil && previous.stamp(for: key) == stamp &&
+                    before.st_size >= 0 && UInt64(before.st_size) == file.size
+                if indexed { result.indexedFiles += 1 }
                 existing.append(hadContent)
                 try sizeFile(url.path, to: file.size)
                 paths.append(url.path)
@@ -422,7 +450,7 @@ final class DepotDownloader {
                 for (chunkIndex, chunk) in file.chunks.enumerated() {
                     let item = WorkItem(file: fileIndex, chunk: chunkIndex)
                     result.totalBytes += UInt64(chunk.compressedSize)
-                    if done.contains(item.key) {
+                    if indexed {
                         result.doneBytes += UInt64(chunk.compressedSize)
                     } else {
                         pending.append(item)
@@ -440,16 +468,20 @@ final class DepotDownloader {
             result.pending.append(pending)
             result.journals.append(journalURL)
         }
+        result.candidates.sort()
+        SteamLog.event("[steam-index] reused-files=\(result.indexedFiles) candidates=\(result.candidates.count) force=\(forceVerify ? 1 : 0)")
         return result
     }
 
-    /// Disk-only phase. Journaled chunks are reused as before; other existing
-    /// chunks are hashed off the main actor, with bounded parallelism. Missing
+    /// Disk-only phase. A journal alone cannot prove that a mod/external write
+    /// has not changed bytes since pause. Unsealed existing chunks are hashed
+    /// off the main actor, with bounded parallelism. Missing
     /// chunks are collected before any network speed/ETA is started.
     private nonisolated static func verify(_ prepared: Prepared, plans: [DepotPlan],
         progress: @escaping @MainActor @Sendable (UInt64, UInt64) -> Void) async throws -> Prepared {
         var result = prepared
         var checked = prepared.doneBytes
+        var hashedChunks = 0
         var lastReport = ProcessInfo.processInfo.systemUptime
         for (index, plan) in plans.enumerated() {
             try Task.checkCancellation()
@@ -458,6 +490,7 @@ final class DepotDownloader {
             let work = prepared.pending[index]
             let paths = prepared.paths[index]
             let existing = prepared.existing[index]
+            hashedChunks += work.reduce(0) { $0 + (existing[$1.file] ? 1 : 0) }
             var pending: [WorkItem] = []
             try await withThrowingTaskGroup(of: (WorkItem, Bool).self) { group in
                 var next = 0
@@ -490,7 +523,33 @@ final class DepotDownloader {
         }
         try Task.checkCancellation()
         await progress(checked, result.doneBytes)
+        SteamLog.event("[steam-index] hashed-chunks=\(hashedChunks)")
         return result
+    }
+
+    private nonisolated static func publishIndex(_ prepared: Prepared, plans: [DepotPlan], to url: URL) throws {
+        var index = SteamFileIndex()
+        for (depot, plan) in plans.enumerated() {
+            // Pending is already in file/chunk order. Avoid a second per-file
+            // set proportional to the size of a large manifest.
+            var cursor = 0
+            let pending = prepared.pending[depot]
+            for file in plan.manifest.files.indices {
+                try Task.checkCancellation()
+                while cursor < pending.count && pending[cursor].file < file { cursor += 1 }
+                if cursor < pending.count && pending[cursor].file == file { continue }
+                let path = prepared.paths[depot][file]
+                guard !path.isEmpty, index.count < SteamFileIndex.limit else { continue }
+                let key = SteamFileIndex.key(depot: plan.depotID, manifest: plan.manifestGID, path: path)
+                if let original = prepared.candidates.stamp(for: key), SteamFileIndex.stamp(path) == original {
+                    index.append(key: key, stamp: original)
+                }
+            }
+        }
+        index.sort()
+        try Task.checkCancellation()
+        try index.publish(url)
+        SteamLog.event("[steam-index] published-files=\(index.count) record-bytes=\(index.records.count)")
     }
 
     /// Create or resize a file to its manifest length. Existing bytes below

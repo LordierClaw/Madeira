@@ -85,7 +85,7 @@ library_swift = [
     'SwiftSteam/Core/CMServerList.swift', 'SwiftSteam/Core/LicenseListBox.swift', 'SwiftSteam/Core/SteamCMSession.swift',
     'SwiftSteam/Core/SteamConnection.swift', 'SwiftSteam/Core/SteamMessageCodec.swift', 'SwiftSteam/Core/SteamProtocol.swift',
     'SwiftSteam/Core/SteamSession.swift', 'SwiftSteam/Content/ContentDecryptor.swift', 'SwiftSteam/Content/DepotDownloader.swift',
-    'SwiftSteam/Content/DepotManifest.swift', 'SwiftSteam/Library/SteamAppInfo.swift',
+    'SwiftSteam/Content/DepotManifest.swift', 'SwiftSteam/Content/SteamFileIndex.swift', 'SwiftSteam/Library/SteamAppInfo.swift',
     'SwiftSteam/Library/SteamLibraryFetcher.swift', 'SwiftSteam/Install/AppManifestWriter.swift']
 c_files = ['SwiftSteam/chunk_zip.c', 'SwiftSteam/chunk_zip.h', 'SwiftSteam/lzma_shim.c', 'SwiftSteam/lzma_shim.h',
            'SwiftSteam/zstd_edu.c', 'SwiftSteam/zstd_edu.h']
@@ -972,6 +972,33 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
         let preserved = try Data(contentsOf: sentinel)
         require(preserved == Data("keep me".utf8), "DLC overlap is rejected before any game file or journal is changed")
     }
+    let catalog = records.appendingPathComponent("verified.index")
+    let fingerprint = SteamFileIndex.stamp(sentinel.path)!
+    let identity = SteamFileIndex.key(depot: 1, manifest: 1, path: sentinel.path)
+    var index = SteamFileIndex()
+    index.append(key: identity, stamp: fingerprint); index.sort(); try index.publish(catalog)
+    require(SteamFileIndex.load(catalog).stamp(for: identity) == fingerprint, "catalog round trip preserves verified fingerprint")
+    require(SteamFileIndex.load(catalog).stamp(for: SteamFileIndex.key(depot: 1, manifest: 2, path: sentinel.path)) == nil,
+            "a new depot manifest cannot reuse an old fingerprint")
+    try Data("changed".utf8).write(to: sentinel)
+    require(SteamFileIndex.stamp(sentinel.path) != fingerprint, "same-length replacement invalidates identity and ctime")
+    var broken = try Data(contentsOf: catalog); broken[broken.count - 1] ^= 1
+    try broken.write(to: catalog)
+    require(SteamFileIndex.load(catalog).count == 0, "corrupt catalog fails open to verification")
+    try Data(repeating: 0, count: SteamFileIndex.maximumBytes + 1).write(to: catalog)
+    require(SteamFileIndex.load(catalog).count == 0, "oversized catalog is bounded and ignored")
+    index = SteamFileIndex()
+    for i in 0..<(SteamFileIndex.limit + 100) {
+        index.append(key: SteamFileIndex.key(depot: 1, manifest: 1, path: "file\(i)"), stamp: fingerprint)
+    }
+    require(index.count == SteamFileIndex.limit, "retained fingerprints stop at the fixed record limit")
+    index.sort(); try index.publish(catalog)
+    require(SteamFileIndex.load(catalog).count == SteamFileIndex.limit, "full bounded catalog validates ordering and checksum")
+    let journals = records.appendingPathComponent("journals")
+    try FileManager.default.createDirectory(at: journals, withIntermediateDirectories: true)
+    _ = try DepotDownloader.prepare(plans: [collisionPlan(1, "data.bin")], installURL: records,
+                                    journalDir: journals, catalogURL: catalog)
+    require(!FileManager.default.fileExists(atPath: catalog.path), "preparation invalidates the prior generation before resizing content")
 }
 
 @MainActor func install(_ fx: [String: Any], phase: String) async throws {
@@ -985,7 +1012,7 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     session.authToken = fx["auth"] as! String
     session.licenses = [21]
     session.packageBuffers = [21: packageBuffer(apps: [9000, 9100], depots: [9001, 9003])]
-    let version = (phase == "update" || phase == "dlc-update" || phase == "dlc-all") ? 2 : 1
+    let version = ["update", "dlc-update", "dlc-all", "index-warm", "repair"].contains(phase) ? 2 : 1
     let gid = (fx["gid\(version)"] as! Int)
     let gidShared = fx["gidShared"] as! Int
     let build = version == 1 ? 1000 : 1001
@@ -1023,7 +1050,7 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
     var updates: [SteamDownloadProgress] = []
     let licensed: Set<UInt32> = phase == "dlc-refused" ? [9003] : (phase == "refused-licensed" ? [9001, 9003, 9004] : [9001, 9003])
     do {
-        _ = try await downloader.install(app, steamApps: steamApps, ownedDepots: { licensed }) { lastProgress = $0; updates.append($0) }
+        _ = try await downloader.install(app, steamApps: steamApps, forceVerify: phase == "repair", ownedDepots: { licensed }) { lastProgress = $0; updates.append($0) }
         require(phase != "dlc-refused", "a selected DLC refusal cannot silently complete the base game")
         print("RESULT install=ok")
     } catch {
@@ -1037,6 +1064,9 @@ func packageBuffer(apps: [UInt32], depots: [UInt32]) -> Data {
         if phase == "refused-licensed" { require(error as? SteamError == .depotKeyNotFound(9004), "a refusal for a depot the account is licensed for fails the install") }
     }
     let found = MadeiraDock.games(drive: drive)
+    for event in loggedEvents where event.hasPrefix("[steam-index] hashed-chunks=") {
+        print("RESULT hashedChunks=\(event.components(separatedBy: "=").last!)")
+    }
     if phase == "dlc" || phase == "dlc-update" {
         require(AppManifestWriter.installedDepots(appID: 9000, steamApps: steamApps).contains { $0.depotID == 9001 && $0.dlcAppID == 9300 },
                 "a real DLC transfer records its owning DLC id in the base game's manifest")
@@ -1166,7 +1196,7 @@ try:
     (work / 'downloader.swift').write_text(downloader_host)
     production = [steam / 'Proto/SteamProtoMessages.swift', steam / 'Core/SteamError.swift', steam / 'Core/SteamProtocol.swift',
                   steam / 'Core/SteamMessageCodec.swift', steam / 'Core/SteamCMSession.swift',
-                  steam / 'Content/ContentDecryptor.swift', steam / 'Content/DepotManifest.swift',
+                  steam / 'Content/ContentDecryptor.swift', steam / 'Content/DepotManifest.swift', steam / 'Content/SteamFileIndex.swift',
                   steam / 'Library/SteamAppInfo.swift', steam / 'Library/SteamLibraryFetcher.swift',
                   steam / 'Install/AppManifestWriter.swift', app / 'SteamInstall.swift', app / 'SteamKeyValues.swift']
     exe = work / 'check'
@@ -1304,6 +1334,24 @@ try:
     require(int(cached['networkBytes']) == 0 and int(cached['reusedBytes']) > 0 and not state.chunk_requests,
             'an already installed game completes without any network bytes, even after journals are removed')
 
+    warm = run('index-warm', fixture)
+    require(int(warm['hashedChunks']) == 0 and int(warm['networkBytes']) == 0,
+            'an unchanged verified installation skips all content hashing and network traffic')
+    repaired = run('repair', fixture)
+    require(int(repaired['hashedChunks']) > 0 and int(repaired['networkBytes']) == 0,
+            'explicit repair bypasses metadata reuse and hashes existing chunks')
+    # Editing bytes while preserving length/mtime must still trigger hashing.
+    modified = folder / 'docs/Readme.TXT'
+    metadata = modified.stat()
+    changed = bytearray(modified.read_bytes()); changed[0] ^= 1
+    modified.write_bytes(changed)
+    os.utime(modified, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+    state.reset_counters()
+    fixed = run('index-warm', fixture)
+    require(int(fixed['hashedChunks']) > 0 and modified.read_bytes() == README and state.chunk_requests,
+            'same-size modification with restored mtime is detected through ctime and repaired')
+    run('index-warm', fixture)  # seal the file after its repair, without another content write
+
     # Download all missing: keep the already installed base and shared content,
     # then fetch two independently licensed add-on depots in one operation.
     addons = [Depot(9005, KEY_MAIN, [dict(name='dlc/one.bin', data=data(45000, 51), chunks=[('zip', 45000)])]),
@@ -1316,6 +1364,7 @@ try:
     addon_chunks = {sha: blob for addon in addons for sha, blob in addon.chunks.items()}
     require(set(state.chunk_requests) == set(addon_chunks) and int(combined['networkBytes']) == sum(map(len, addon_chunks.values())),
             'two missing DLC share one exact network total; no installed base bytes enter progress or speed')
+    require(int(combined['hashedChunks']) == 0, 'download-all-missing DLC does not rehash unchanged base files')
     require(int(combined['reusedBytes']) == int(cached['reusedBytes']), 'all cached base content is reported separately from both DLC')
     require((folder / 'dlc/one.bin').read_bytes() == data(45000, 51) and (folder / 'dlc/two.bin').read_bytes() == data(68000, 52),
             'both DLC have the verified final contents')
@@ -1324,6 +1373,7 @@ try:
     run('uninstall', fixture)
     require(not folder.exists() and not (steam_apps / 'appmanifest_9000.acf').exists() and not (steam_apps / 'appmanifest_9100.acf').exists()
             and not (steam_apps / 'downloading/9000').exists(), 'uninstall removes the folder, both records and the journal')
+    require(not (steam_apps / 'depotcache/madeira/9000.files-v1').exists(), 'uninstall removes the verification catalog')
 
     # ---- a depot the account is licensed for but Steam refuses fails the install and writes no record
     other = dict(fixture, tmp=str(work / 'root2'))

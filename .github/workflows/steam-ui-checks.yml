@@ -55,6 +55,10 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Cloud decisions
         run: python3 tests/host/check-steam-cloud.py
+      - name: Directory index on Darwin with real vnode notifications
+        run: |
+          git submodule update --init --depth 1 wine
+          python3 tests/host/check-directory-index.py --cc clang
       - name: Native and compatibility archive precedence
         run: python3 tests/host/check-local-package.py
       - name: Parse app Swift sources
@@ -97,7 +101,7 @@ jobs:
                     'audio-wow64', 'audio-source', 'd3d12-tiled']
           failed = []
           # DataFix's Windows harness is run on the Windows development host.
-          for check in checks + ['input-queue', 'thin-reserve', 'file-lookup', 'file-profile']:
+          for check in checks + ['input-queue', 'thin-reserve', 'file-lookup', 'file-profile', 'directory-index']:
               print(f'::group::{check}', flush=True)
               command = [sys.executable, f'tests/host/check-{check}.py']
               if check == 'input-queue': command += ['--cc', 'clang']
