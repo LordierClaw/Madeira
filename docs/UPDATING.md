@@ -9,7 +9,7 @@ Update it deliberately when dependency revisions or the shipped module set chang
 
 | Checkout | Development branch | Write remote | Read-only upstream |
 |---|---|---|---|
-| Madeira | `ui-ux` | `LordierClaw/Madeira` | `willfaust/Madeira` (`upstream`), `c-gow/Madeira` (`c-gow`) |
+| Madeira | `madeira-fixes` | `LordierClaw/Madeira` | `willfaust/Madeira` (`upstream`), `c-gow/Madeira` (`c-gow`) |
 | `wine` submodule | `madeira-fixes` | `LordierClaw/Madeira-wine` | `willfaust/wine`, `madeira-lgpl` |
 
 The older `work/` checkouts are build/reference history. The parent
@@ -79,7 +79,7 @@ resolving UI or input conflicts.
 2. Merge Wine upstream into `madeira-fixes`, retaining DataFix and OpenGL.
    Run the loader/runtime tests, audit source-only staged changes, commit and
    push to our Wine origin. Merge Madeira main, then relevant c-gow updates
-   into `ui-ux`, preserving the feature table and setting the fork Wine gitlink.
+   into `madeira-fixes`, preserving the feature table and setting the fork Wine gitlink.
 3. Source-only merge policy: retain existing binary payloads unchanged in Git;
    exclude newly introduced DLL/EXE/library/runtime/game payloads. Rebuild the
    required open-source components outside Git. Keep upstream license texts.
@@ -90,7 +90,7 @@ resolving UI or input conflicts.
 5. Run source/host checks and the Steam/UI workflow. Before **each** commit:
    `python tools/check-source-commit.py --staged` and `git diff --cached --check`.
    Keep hooks enabled with `git config core.hooksPath .githooks`.
-6. Run `iOS native build` on `ui-ux`. Leave `native_run` empty whenever runtime
+6. Run `iOS native build` on `madeira-fixes`. Leave `native_run` empty whenever runtime
    source or recipes changed. Reuse LLVM only if its recipe matches and the
    artifact exists. Graphics cache is keyed by its full recipes and patches;
    it is validated against the unsigned digest before Xcode copies/signs it.

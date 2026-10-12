@@ -1,7 +1,7 @@
 name: Steam and UI checks
 on:
   push:
-    branches: [ui-ux]
+    branches: [madeira-fixes]
     paths:
       - 'app/Madeira/**/*.swift'
       - 'app/Madeira/SwiftSteam/**'

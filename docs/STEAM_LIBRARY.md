@@ -1,6 +1,6 @@
 # Steam library and downloads
 
-Fork additions on `ui-ux`: see [UI_UX.md](UI_UX.md) for explicit owned-DLC
+Fork additions: see [UI_UX.md](UI_UX.md) for explicit owned-DLC
 downloads, their overlap limitation, and persistent local-save preference.
 The DLC exclusion below describes the inherited implementation.
 

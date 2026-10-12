@@ -1,7 +1,7 @@
 name: iOS native build
 on:
   push:
-    branches: [ui-ux]
+    branches: [madeira-fixes]
     paths: ['.github/workflows/ios-build.yml', 'build/ci/**']
   workflow_dispatch:
     inputs:

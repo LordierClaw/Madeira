@@ -2,7 +2,7 @@
 
 The working repositories are [LordierClaw/Madeira](https://github.com/LordierClaw/Madeira)
 and its Wine submodule [LordierClaw/Madeira-wine](https://github.com/LordierClaw/Madeira-wine).
-Madeira development uses `ui-ux`; Wine uses `madeira-fixes`. The inherited
+Madeira and Wine development both use `madeira-fixes`. The inherited
 `main` and other upstream branches have not been overwritten. Future development belongs here.
 
 For the current dependency pins, preserved-difference map and next-update
@@ -23,8 +23,9 @@ limitations without changing their device-validation status.
   is committed in our Wine submodule, so it must not be reapplied during builds.
 
 These original baselines match the source used for the device troubleshooting.
-The maintained development branch is now `ui-ux`; `madeira-fixes` remains its
-original base. Wine continues on `madeira-fixes`.
+Development continued on `ui-ux` until 2026-10-12, when `madeira-fixes` was
+fast-forwarded to it and `ui-ux` was deleted. Both repositories now develop on
+`madeira-fixes`.
 
 ## Upstream integration, 2026-10-10
 
@@ -66,7 +67,7 @@ empty); the build 17 dependency artifacts do not match these new pins.
 
 After the main upstream integration, `ui-ux` also merges
 [c-gow/Madeira at e711351](https://github.com/c-gow/Madeira/commit/e7113515c455a48df5fa5bcce4ebfdeaaf04f152).
-`backup/pre-cgow-2026-10-10` retains our preceding tip. Existing input, DragFix,
+The merge's first parent, `c571c473`, is our preceding tip. Existing input, DragFix,
 DLC/progress, Cloud keep-local and playing-only landscape fixes are preserved.
 The Wine pin remains `2233aa82`: its existing OpenGL implementation matches
 the imported patch (reverse-apply check excluding the license context passes).

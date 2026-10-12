@@ -1,6 +1,6 @@
 # Steam content, cloud saves and orientation
 
-Work on branch `ui-ux`, based on `madeira-fixes`. These changes require a new
+Developed on the former `ui-ux` branch, now part of `madeira-fixes`. These changes require a new
 native app build; copying a Wine DLL into an older IPA does not add this UI.
 
 ## DLC: diagnosis and supported path

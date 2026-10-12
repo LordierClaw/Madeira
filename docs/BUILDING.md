@@ -41,7 +41,7 @@ LLVM inputs are unchanged; [regression checks](https://github.com/LordierClaw/Ma
 passed, including combined DLC transfers and orientation transitions. Physical
 iPhone validation of this follow-up is pending.
 
-The maintained `ui-ux` branch uses `.github/workflows/ios-build.yml` and
+The maintained `madeira-fixes` branch uses `.github/workflows/ios-build.yml` and
 `build/ci/*.sh`. The original September build notes below are a historical
 record, not the current fork's submodule availability status. All pinned
 submodules needed by this workflow can now be fetched from their public forks.
@@ -63,7 +63,7 @@ hooks, replace allocation or alter atomic emulation. The FEX source is unchanged
 The Wine native build separately probes an SDK-specific resource counter and
 marks it unavailable when the SDK lacks it.
 
-Run the **iOS native build** workflow on `ui-ux`. Leave `llvm_run` and
+Run the **iOS native build** workflow on `madeira-fixes`. Leave `llvm_run` and
 `native_run` empty for a complete dependency build. To reuse successful
 artifacts from earlier runs, supply their run IDs; the workflow compares the
 relevant source recipes and submodule commits before accepting them. Cached
