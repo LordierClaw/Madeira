@@ -17,8 +17,20 @@ xcodebuild -downloadComponent MetalToolchain
 modules=(win32u cabinet cryptsp d3dx11_43 gdiplus hnetcfg mlang msasn1 msctf
     msftedit msvcp110 msvcr110 msxml3 msxml6 riched20 riched32 sspicli usp10
     wbemdisp wbemprox wldp wmiutils xaudio2_7 xmllite dbghelp)
+# Upstream's 2026-10-15 wave adds the game builtins listed as GAME_MODULES in
+# build-modules.sh (older VC++/D3DX/XAudio2 sources from Wine, not Microsoft
+# DLLs) and changes windows.gaming.input. Upstream commits those DLLs; this
+# source-only fork rebuilds them here instead.
+read -r -a game_modules <<< "$(sed -n '/^GAME_MODULES="/,/"$/p' build/wine-pe/build-modules.sh | tr -d '"' | sed 's/^GAME_MODULES=//' | tr '\n' ' ')"
+test "${#game_modules[@]}" -gt 50
+modules+=("${game_modules[@]}" windows.gaming.input)
 WINE_BUILD_DIR="$ROOT/wine/build-macos" JOBS=3 bash build/wine-pe/build-modules.sh "${modules[@]}"
 printf 'app/Madeira/arm64ec-windows/%s.dll\n' "${modules[@]}" >> outputs/rebuilt-wine-pe.txt
+# vulkan-1.dll is a stand-in that answers like a PC without a Vulkan driver.
+python3 tools/build-stub-dlls.py wine build/stub-dlls "$TC/arm64ec-w64-mingw32-clang" "$TC/llvm-readobj" app/Madeira/arm64ec-windows
+echo app/Madeira/arm64ec-windows/vulkan-1.dll >> outputs/rebuilt-wine-pe.txt
+bash build/faultrep/build.sh
+echo app/Madeira/arm64ec-windows/faultrep.dll >> outputs/rebuilt-wine-pe.txt
 
 # FEX has separate PE backends in addition to the native FEXCore archive.
 bash build/fex-arm64ec/build.sh
