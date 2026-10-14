@@ -94,7 +94,6 @@ func winios_post_touch_up(_ x: Int32, _ y: Int32) { fatalError("unexpected direc
 func winios_post_touch_move(_ x: Int32, _ y: Int32) { fatalError("unexpected direct input") }
 class MetalBackedView: UIView {
     var touchPointerMode = false
-    var desktopMode = false
     func touchModeBegan(_ t: Set<UITouch>) { fatalError("unexpected touch mode") }
     func touchModeMoved(_ t: Set<UITouch>, _ e: UIEvent?) { fatalError("unexpected touch mode") }
     func touchModeEnded(_ t: Set<UITouch>, _ e: UIEvent?) { fatalError("unexpected touch mode") }
