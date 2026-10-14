@@ -23,7 +23,12 @@ modules=(win32u cabinet cryptsp d3dx11_43 gdiplus hnetcfg mlang msasn1 msctf
 # source-only fork rebuilds them here instead.
 read -r -a game_modules <<< "$(sed -n '/^GAME_MODULES="/,/"$/p' build/wine-pe/build-modules.sh | tr -d '"' | sed 's/^GAME_MODULES=//' | tr '\n' ' ')"
 test "${#game_modules[@]}" -gt 50
-modules+=("${game_modules[@]}" windows.gaming.input)
+# vcomp140 stays out: package-local-ipa.py places Microsoft's vcomp140.dll
+# from the VC++ runtime in arm64ec-windows, as before this wave.
+for module in "${game_modules[@]}"; do
+    [ "$module" = vcomp140 ] || modules+=("$module")
+done
+modules+=(windows.gaming.input)
 WINE_BUILD_DIR="$ROOT/wine/build-macos" JOBS=3 bash build/wine-pe/build-modules.sh "${modules[@]}"
 printf 'app/Madeira/arm64ec-windows/%s.dll\n' "${modules[@]}" >> outputs/rebuilt-wine-pe.txt
 # vulkan-1.dll is a stand-in that answers like a PC without a Vulkan driver.

@@ -122,7 +122,6 @@
     "arm64ec-windows/vcomp100.dll",
     "arm64ec-windows/vcomp110.dll",
     "arm64ec-windows/vcomp120.dll",
-    "arm64ec-windows/vcomp140.dll",
     "arm64ec-windows/vcomp90.dll",
     "arm64ec-windows/vulkan-1.dll",
     "arm64ec-windows/wbemdisp.dll",
