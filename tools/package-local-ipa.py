@@ -2,8 +2,11 @@
 """Package a freshly built native app with explicitly supplied local runtimes.
 
 The compatibility IPA supplies unchanged i386 PE modules and the previously
-verified Microsoft runtime. Fresh native OpenGL and rebuilt PE modules win.
-Neither input nor the resulting IPA belongs in Git.
+verified Microsoft runtime. --vcruntime-dir instead supplies the runtime (and
+MFC) extracted from Microsoft's VC_redist.x64.exe as tools/fetch-vcruntime.md
+describes; those files win over the compatibility IPA's. Fresh native OpenGL
+and rebuilt PE modules win over both. No input nor the resulting IPA belongs
+in Git.
 """
 import argparse
 import hashlib
@@ -22,6 +25,7 @@ RUNTIMES = {
     'vcruntime140_threads.dll',
 }
 KEEP_WINE_EC = {'msvcp140.dll', 'vcruntime140.dll'}
+MFC = {'mfc140.dll', 'mfc140u.dll'}
 PREFIX = 'Payload/Madeira.app/'
 
 
@@ -34,6 +38,19 @@ def file_digest(path):
         return hashlib.file_digest(f, 'sha256').hexdigest()
 
 
+def signed_x64_pe(data):
+    """An x86-64 PE that still carries its Authenticode certificate table."""
+    if data[:2] != b'MZ' or len(data) < 0x40:
+        return False
+    pe = struct.unpack_from('<I', data, 0x3c)[0]
+    if pe + 24 + 112 + 40 > len(data) or data[pe:pe + 4] != b'PE\0\0':
+        return False
+    if struct.unpack_from('<H', data, pe + 4)[0] != 0x8664 or struct.unpack_from('<H', data, pe + 24)[0] != 0x20b:
+        return False
+    offset, size = struct.unpack_from('<II', data, pe + 24 + 112 + 4 * 8)
+    return size > 0 and offset + size <= len(data)
+
+
 def main():
     if not __debug__:
         raise SystemExit('Do not disable package validation with Python optimization')
@@ -41,6 +58,8 @@ def main():
     ap.add_argument('--native-app', type=Path, required=True)
     ap.add_argument('--compat-ipa', type=Path, required=True)
     ap.add_argument('--compat-sha256', required=True)
+    ap.add_argument('--vcruntime-dir', type=Path,
+                    help='directory with the unmodified x64 VC++ runtime DLLs (fetch-vcruntime.md)')
     ap.add_argument('--source-commit', required=True)
     ap.add_argument('--output', type=Path, required=True)
     args = ap.parse_args()
@@ -67,10 +86,25 @@ def main():
                     or rel.startswith('x86_64-vcruntime/') and path.name in RUNTIMES
                     or rel.startswith('arm64ec-windows/') and path.name in RUNTIMES - KEEP_WINE_EC):
                 overlay[rel] = (compat.read(entry), (entry.external_attr >> 16) & 0o777 or 0o644)
-        for name in RUNTIMES:
-            assert 'x86_64-vcruntime/' + name in overlay, name
-        for name in RUNTIMES - KEEP_WINE_EC:
-            assert overlay['x86_64-vcruntime/' + name][0] == overlay['arm64ec-windows/' + name][0]
+    vcruntime = {}
+    if args.vcruntime_dir:
+        for name in sorted(RUNTIMES | MFC):
+            path = args.vcruntime_dir / name
+            if not path.is_file():
+                if name in MFC:
+                    continue
+                raise SystemExit('Missing VC++ runtime file: ' + name)
+            data = path.read_bytes()
+            if not signed_x64_pe(data):
+                raise SystemExit('Not an unmodified signed x64 Microsoft DLL: ' + name)
+            vcruntime[name] = digest(data)
+            overlay['x86_64-vcruntime/' + name] = (data, 0o644)
+            if name in RUNTIMES - KEEP_WINE_EC:
+                overlay['arm64ec-windows/' + name] = (data, 0o644)
+    for name in RUNTIMES:
+        assert 'x86_64-vcruntime/' + name in overlay, name
+    for name in RUNTIMES - KEEP_WINE_EC:
+        assert overlay['x86_64-vcruntime/' + name][0] == overlay['arm64ec-windows/' + name][0]
 
     expected = {}
     native_hashes = {}
@@ -166,6 +200,7 @@ def main():
         'source_commit': args.source_commit,
         'native_app_sha256': file_digest(args.native_app),
         'compatibility_ipa_sha256': args.compat_sha256,
+        'vcruntime_sha256': vcruntime,
         'ipa_sha256': file_digest(args.output),
         'ipa_bytes': args.output.stat().st_size,
         'version': info['CFBundleShortVersionString'],

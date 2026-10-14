@@ -77,7 +77,7 @@ class PackageTests(unittest.TestCase):
             'graphics_receipt_sha256': sha(self.native['gl/build-info.json']),
             'signed_plugins': {name: sha(self.native['gl/' + name]) for name in ('libOSMesa.dylib', 'libMoltenVK.dylib')}}).encode()
 
-    def run_package(self):
+    def run_package(self, vcruntime=None):
         archive = self.root / 'native.tar.gz'
         with tarfile.open(archive, 'w:gz') as tar:
             for name, data in self.native.items():
@@ -88,9 +88,56 @@ class PackageTests(unittest.TestCase):
         compat = self.root / 'compat.ipa'
         with zipfile.ZipFile(compat, 'w') as zip:
             for name, data in self.compat.items(): zip.writestr(pkg.PREFIX + name, data)
+        extra = []
+        if vcruntime is not None:
+            folder = self.root / 'x86_64-vcruntime'
+            folder.mkdir()
+            for name, data in vcruntime.items(): (folder / name).write_bytes(data)
+            extra = ['--vcruntime-dir', str(folder)]
         return subprocess.run([sys.executable, str(SCRIPT), '--native-app', str(archive),
             '--compat-ipa', str(compat), '--compat-sha256', sha(compat.read_bytes()),
-            '--source-commit', SOURCE, '--output', str(self.output)], capture_output=True, text=True)
+            '--source-commit', SOURCE, '--output', str(self.output)] + extra, capture_output=True, text=True)
+
+    @staticmethod
+    def signed_pe(name, signed=True):
+        """A synthetic x86-64 PE32+ with a certificate table entry; no vendor payload."""
+        data = bytearray(0x400)
+        data[:2] = b'MZ'
+        struct.pack_into('<I', data, 0x3c, 0x80)
+        data[0x80:0x84] = b'PE\0\0'
+        struct.pack_into('<H', data, 0x84, 0x8664)
+        struct.pack_into('<H', data, 0x80 + 24, 0x20b)
+        if signed:
+            struct.pack_into('<II', data, 0x80 + 24 + 112 + 32, 0x300, 0x100)
+        return bytes(data) + name.encode()
+
+    def test_vcruntime_dir_supplies_runtime_and_mfc(self):
+        for name in pkg.RUNTIMES:
+            del self.compat['x86_64-vcruntime/' + name], self.compat['arm64ec-windows/' + name]
+        runtime = {name: self.signed_pe(name) for name in pkg.RUNTIMES | pkg.MFC}
+        result = self.run_package(runtime)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with zipfile.ZipFile(self.output) as zip:
+            for name, data in runtime.items():
+                self.assertEqual(zip.read(pkg.PREFIX + 'x86_64-vcruntime/' + name), data, name)
+            for name in pkg.RUNTIMES - pkg.KEEP_WINE_EC:
+                self.assertEqual(zip.read(pkg.PREFIX + 'arm64ec-windows/' + name), runtime[name], name)
+            for name in pkg.KEEP_WINE_EC:
+                self.assertEqual(zip.read(pkg.PREFIX + 'arm64ec-windows/' + name), self.native['arm64ec-windows/' + name])
+        manifest = json.loads(self.output.with_suffix('.manifest.json').read_text())
+        self.assertEqual(set(manifest['vcruntime_sha256']), pkg.RUNTIMES | pkg.MFC)
+
+    def test_vcruntime_dir_rejects_unsigned_or_missing(self):
+        runtime = {name: self.signed_pe(name) for name in pkg.RUNTIMES}
+        runtime['vcruntime140.dll'] = self.signed_pe('vcruntime140.dll', signed=False)
+        result = self.run_package(runtime)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Not an unmodified signed x64 Microsoft DLL: vcruntime140.dll', result.stderr)
+        self.temp.cleanup(); self.setUp()
+        runtime = {name: self.signed_pe(name) for name in pkg.RUNTIMES - {'concrt140.dll'}}
+        result = self.run_package(runtime)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Missing VC++ runtime file: concrt140.dll', result.stderr)
 
     def test_fresh_plugins_and_pe_win(self):
         result = self.run_package()
