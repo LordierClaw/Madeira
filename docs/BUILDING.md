@@ -80,11 +80,15 @@ python3 tools/package-local-ipa.py \
   --source-commit "$(cat source-commit.txt)" \
   --compat-ipa /path/to/local-compatibility.ipa \
   --compat-sha256 <verified-sha256-of-that-file> \
+  --vcruntime-dir /path/to/x86_64-vcruntime \
   --output /path/to/Madeira-UIUX.ipa
 ```
 
 That local overlay contributes unchanged i386 Wine modules and previously
-verified VC runtime files. The native archive supplies the app, JIT helper,
+verified VC runtime files. `--vcruntime-dir` (optional) instead supplies the
+runtime and MFC extracted from Microsoft's redistributable as
+[fetch-vcruntime.md](../tools/fetch-vcruntime.md) describes; each file must
+be a signed x86-64 PE, and these win over the compatibility IPA's copies. The native archive supplies the app, JIT helper,
 fresh graphics and rebuilt PE modules; rebuilt i386 files take precedence.
 The two Wine ARM64EC runtime implementations (`msvcp140.dll`,
 `vcruntime140.dll`) are retained. Other unchanged inherited modules remain,
