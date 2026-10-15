@@ -42,7 +42,7 @@ typedef struct { int node, next; struct dirent entry; } DIR;
 static struct { char names[2000][128]; int count, generation, identity; } fs[80];
 static int handles[200], handle_count, event_pending[80], poll_error, register_error, read_error, mutate_read;
 static void *watches[80];
-static int scans, builds, hits, stale, fallbacks, entries, case_queries;
+static int scans, builds, hits, stale, fallbacks, entries, case_queries, reused, stat_calls;
 #define IOS_FILE_COUNT(n) IOS_COUNT_##n++
 #define IOS_COUNT_scans scans
 #define IOS_COUNT_index_build builds
@@ -51,6 +51,7 @@ static int scans, builds, hits, stale, fallbacks, entries, case_queries;
 #define IOS_COUNT_index_fallback fallbacks
 #define IOS_COUNT_entries entries
 #define IOS_COUNT_case_query case_queries
+#define IOS_COUNT_dir_reused reused
 static int kqueue(void) { return 199; }
 static int fcntl(int fd, int cmd, int value) { (void)fd; (void)cmd; (void)value; return 0; }
 static int kevent(int q, const struct kevent *changes, int n, struct kevent *events, int max, const struct timespec *t)
@@ -66,6 +67,7 @@ static int kevent(int q, const struct kevent *changes, int n, struct kevent *eve
 static int fstatat(int root, const char *path, struct stat *st, int flags)
 {
     (void)flags;
+    stat_calls++;
     int node = !strcmp(path, ".") ? handles[root] : atoi(path) + root;
     if (node < 0 || node >= 80 || !fs[node].identity) return -1;
     memset(st, 0, sizeof(*st));
@@ -122,10 +124,30 @@ int main(void)
     for (int i = 0; i < 80; i++) fs[i].identity = i + 1;
     change(0, "Asset.JSON"); change(0, "asset.json"); change(0, "link?");
     query(0, "0", L"ASSET.JSON", "Asset.JSON", 0);
+    /* An exact spelling wins over the first case-folded one, as a literal stat would. */
+    query(0, "0", L"asset.json", "asset.json", 0);
+    query(0, "0", L"Asset.JSON", "Asset.JSON", 0);
     query(0, "0", L"missing", NULL, 0);
     query(0, "0", L"link", NULL, 1);
     for (int i = 0; i < 10000; i++) query(0, "0", L"missing", NULL, 0);
-    assert(scans == 1 && builds == 1 && hits == 10002 && handle_count == 1);
+    assert(scans == 1 && builds == 1 && hits == 10004 && handle_count == 1);
+    /* The directory stat the same lookup just made replaces the index's own,
+     * once, and only for the same root and path. */
+    struct stat known;
+    assert(!fstatat(0, "0", &known, 0));
+    ios_index_note(0, "0", &known);
+    int calls = stat_calls;
+    query(0, "0", L"missing", NULL, 0);
+    assert(stat_calls == calls && reused == 1);
+    query(0, "0", L"missing", NULL, 0);
+    assert(stat_calls == calls + 1 && reused == 1);
+    ios_index_note(1, "0", &known);
+    query(0, "0", L"missing", NULL, 0);
+    assert(stat_calls == calls + 2 && reused == 1);
+    ios_index_note(0, "0", &known); ios_index_forget();
+    query(0, "0", L"missing", NULL, 0);
+    assert(stat_calls == calls + 3 && reused == 1);
+
     /* A native event invalidates even when timestamps are indistinguishable. */
     int generation = fs[0].generation;
     change(0, "Mod.JSON"); fs[0].generation = generation;

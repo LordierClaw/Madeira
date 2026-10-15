@@ -24,7 +24,11 @@ typedef int BOOL, BOOLEAN, NTSTATUS;
 #define STATUS_OBJECT_NAME_NOT_FOUND 1
 #define IOS_FILE_COUNT(n) (++counts.n)
 static struct { int scans, entries, index_hit, index_build, index_stale, index_fallback;
-    int case_query, components, component_miss, reparse_saved; } counts;
+    int case_query, components, component_miss, reparse_saved, index_absent, dir_reused; } counts;
+static int stat_calls;
+static int counted_fstatat(int root, const char *path, struct stat *st, int flags)
+{ stat_calls++; return fstatat(root, path, st, flags); }
+#define fstatat counted_fstatat
 #define wcsnicmp wcsncasecmp
 static int ntdll_umbstowcs(const char *s, int n, WCHAR *out, int max)
 { char copy[256]; if (n > 255) return -1; memcpy(copy, s, n); copy[n] = 0; return mbstowcs(out, copy, max); }
@@ -58,6 +62,29 @@ int main(void)
     int scans = counts.scans;
     for (int i = 0; i < 5000; i++) assert(probe(AT_FDCWD, "dlc", L"missing", out) == STATUS_OBJECT_NAME_NOT_FOUND);
     assert(counts.scans == scans && counts.index_hit >= 5000);
+    /* A warm ASCII miss: the index's directory stat and no literal one; the
+     * reparse-name probe after it needs no stat at all. */
+    int calls = stat_calls, absent = counts.index_absent;
+    assert(probe(AT_FDCWD, "dlc", L"missing", out) == STATUS_OBJECT_NAME_NOT_FOUND);
+    assert(stat_calls == calls + 1 && counts.index_absent == absent + 1);
+    struct file_lookup_reparse seen = {0};
+    strcpy(out, "dlc");
+    assert(find_file_in_dir(AT_FDCWD, out, 3, L"missing", 7, FALSE, &seen, FALSE) == STATUS_OBJECT_NAME_NOT_FOUND);
+    assert(seen.complete && !seen.found);
+    calls = stat_calls;
+    strcpy(out, "dlc");
+    assert(find_file_in_dir(AT_FDCWD, out, 3, L"missing?", 8, FALSE, NULL, TRUE) == STATUS_OBJECT_NAME_NOT_FOUND);
+    assert(stat_calls == calls && !strcmp(out, "dlc"));
+    /* The stat the lookup made of the same directory is reused once. */
+    struct stat dir_stat; assert(!stat("dlc", &dir_stat));
+    ios_index_note(AT_FDCWD, "dlc", &dir_stat);
+    calls = stat_calls;
+    assert(probe(AT_FDCWD, "dlc", L"missing", out) == STATUS_OBJECT_NAME_NOT_FOUND);
+    assert(stat_calls == calls && counts.dir_reused == 1);
+    /* A found ASCII name returns the native spelling, with the same stat. */
+    calls = stat_calls;
+    assert(!probe(AT_FDCWD, "dlc", L"ASSET.json", out) && !strcmp(out, "dlc/Asset.JSON"));
+    assert(stat_calls == calls + 1);
     struct stat before; assert(!stat("dlc", &before));
     write_name("dlc/Mod.JSON");
     struct timespec times[2] = {before.st_atimespec, before.st_mtimespec};

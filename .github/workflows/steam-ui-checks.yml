@@ -48,6 +48,17 @@ jobs:
         env:
           CC: clang
         run: python3 tests/host/check-steam-library.py
+  file-lookup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Wine path lookup, profiler and name index against mocked filesystems
+        run: |
+          git submodule update --init --depth 1 wine
+          python3 tests/host/check-file-lookup.py --cc clang
+          python3 tests/host/check-file-profile.py --cc clang
+          python3 tests/host/check-directory-index.py --cc clang
   cloud-and-ui:
     runs-on: macos-15
     timeout-minutes: 15

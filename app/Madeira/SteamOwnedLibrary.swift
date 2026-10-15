@@ -579,6 +579,7 @@ final class SteamOwnedLibrary: ObservableObject {
         guard Self.cloudEnabled, signedIn, !cloudBlocked else { return nil }
         var state = cloud[appID] ?? SteamCloudState()
         state.phase = .checking
+        state.transientFailure = false
         cloud[appID] = state
         do {
             guard let context = try await cloudContext(appID) else {
@@ -606,7 +607,8 @@ final class SteamOwnedLibrary: ObservableObject {
             if let elsewhere = result.1 { SteamLog.event("[steam-cloud] app=\(appID) saves-found-elsewhere=\(elsewhere == "(not found)" ? 0 : 1)") }
             return plan
         } catch {
-            state.phase = .failed(SteamSignIn.message(error)); cloud[appID] = state
+            state.phase = .failed(SteamSignIn.message(error)); state.transientFailure = Self.transientFailure(error)
+            cloud[appID] = state
             SteamLog.event("[steam-cloud] app=\(appID) failed reason=\(Self.reason(error))")
             return nil
         }
@@ -803,6 +805,18 @@ final class SteamOwnedLibrary: ObservableObject {
 
     private static let cloudNoFolders = "This game's save folders could not be found."
 
+    /// Network failures a second check right away can clear. The library's
+    /// start-up check fails with -999 (cancelled) when the JIT shortcut
+    /// switches the VPN; Play then checks again instead of asking.
+    private static func transientFailure(_ error: Error) -> Bool {
+        guard let url = error as? URLError else { return false }
+        switch url.code {
+        case .cancelled, .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost,
+             .dnsLookupFailed, .notConnectedToInternet: return true
+        default: return false
+        }
+    }
+
     /// Why a game should not start yet: its saves may not be the latest.
     /// `env.MADEIRA_STEAM_CLOUD_PLAY_CHECK = 0` starts games without asking.
     enum CloudHold: Equatable {
@@ -822,14 +836,18 @@ final class SteamOwnedLibrary: ObservableObject {
     /// The game whose saves are being synced before it starts (the library says so).
     @Published private(set) var cloudWaitingFor: Int?
 
-    func cloudHold(_ appID: Int) -> CloudHold? {
+    /// `retryTransient`: a check that failed only on the network counts as
+    /// `stale`, so Play checks once more before asking.
+    func cloudHold(_ appID: Int, retryTransient: Bool = true) -> CloudHold? {
         guard Self.cloudPlayCheck, signedIn, !inSession else { return nil }
         if cloudBusy.contains(appID) { return .syncing }
         guard let state = cloud[appID] else { return .stale }
         switch state.phase {
         case .checking, .downloading, .uploading: return .syncing
         // No prefix yet (first start): there is nothing to compare with.
-        case .failed(let message): return message == Self.cloudNoFolders ? nil : .unchecked(message)
+        case .failed(let message):
+            if message == Self.cloudNoFolders { return nil }
+            return retryTransient && state.transientFailure ? .stale : .unchecked(message)
         case .ready: break
         }
         if let problem = state.problem { return .unchecked(problem) }
@@ -845,7 +863,7 @@ final class SteamOwnedLibrary: ObservableObject {
         for _ in 0..<600 where cloudBusy.contains(appID) { try? await Task.sleep(nanoseconds: 200_000_000) }
         cloud[appID]?.problem = nil      // a transfer that stops again says so again
         await syncCloud(appID)
-        let hold = cloudHold(appID)
+        let hold = cloudHold(appID, retryTransient: false)
         SteamLog.event("[steam-cloud] app=\(appID) before-play sync result=\(hold.map { "\($0)" } ?? "clear")")
         return hold == .stale ? nil : hold
     }

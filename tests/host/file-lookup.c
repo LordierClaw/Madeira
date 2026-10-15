@@ -46,7 +46,7 @@ static const char *lookup_base = "root";
 static struct {
     unsigned int full_hit, full_miss, parent_try, parent_hit, components;
     unsigned int component_miss, case_query, scans, entries;
-    unsigned int prefix_hint, reparse_saved;
+    unsigned int prefix_hint, reparse_saved, full_skip;
 } profile_counts;
 #define IOS_FILE_COUNT(n) (++profile_counts.n)
 
@@ -315,8 +315,9 @@ int main(void)
         assert(profile_counts.components == 2 && profile_counts.scans == 1);
         b = run(lookup_unix_name, dlc_paths[i], 0, FILE_OPEN, 0, 0, 1024);
         printf("stat calls for repeated missing DLC parent: %d\n", b.stats);
-        if (b.stats != 4) { puts("FAIL: repeated parent search remains"); return 1; }
+        if (b.stats != 3) { puts("FAIL: repeated parent search remains"); return 1; }
         assert(profile_counts.prefix_hint == 1 && profile_counts.reparse_saved == 1);
+        assert(profile_counts.full_skip == 1 && !profile_counts.full_miss && !profile_counts.full_hit);
     }
     /* Hints are starting points, never existence/absence results. Change the
      * parent itself, case spelling, and add a reparse file between lookups. */
@@ -372,7 +373,7 @@ int main(void)
         a = run(reference_lookup_unix_name, L"growing\\a\\b\\c\\missing", 0, FILE_OPEN, 0, 0, 1024);
         b = run(lookup_unix_name, L"growing\\a\\b\\c\\missing", 0, FILE_OPEN, 0, 0, 1024);
         assert(a.status == b.status && !strcmp(a.path,b.path));
-        if (attempt == 2) assert(b.stats == 4 && profile_counts.prefix_hint == 1);
+        if (attempt == 2) assert(b.stats == 3 && profile_counts.prefix_hint == 1);
         checks++;
     }
     /* More independent directory keys than the bounded hint table. Eviction

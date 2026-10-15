@@ -675,10 +675,13 @@ struct SteamCloudState: Equatable, Sendable {
     var lastUpload: Int?
     /// Why the last download or upload stopped, shown on the game's page.
     var problem: String?
+    /// The last check failed on the network in a way an immediate second check
+    /// can clear (a cancelled request, an unreachable host, a timeout).
+    var transientFailure = false
 
     static func == (a: SteamCloudState, b: SteamCloudState) -> Bool {
         a.phase == b.phase && a.audit == b.audit && a.checked == b.checked && a.conflicts == b.conflicts
-            && a.lastUpload == b.lastUpload && a.problem == b.problem
+            && a.lastUpload == b.lastUpload && a.problem == b.problem && a.transientFailure == b.transientFailure
             && a.lastDownload?.files == b.lastDownload?.files && a.lastDownload?.backedUp == b.lastDownload?.backedUp
     }
 }

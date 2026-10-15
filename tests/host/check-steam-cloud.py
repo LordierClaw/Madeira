@@ -36,6 +36,12 @@ require('SteamSignIn.flag("MADEIRA_STEAM_CLOUD", default: true)' in owned,
         'Steam Cloud is on unless turned off (env.MADEIRA_STEAM_CLOUD = 0)')
 require('guard let state = cloud[appID] else { return .stale }' in owned,
         'Play on a game not checked yet in this app run syncs it first, without asking')
+hold = owned[owned.index('func cloudHold(_ appID: Int'):owned.index('// MARK: Upload and quit')]
+require('return retryTransient && state.transientFailure ? .stale : .unchecked(message)' in hold
+        and 'cloudHold(appID, retryTransient: false)' in hold,
+        'a check that failed only on the network is repeated once at Play; a second failure asks')
+require('case .cancelled, .timedOut' in owned and 'state.transientFailure = Self.transientFailure(error)' in owned,
+        'a cancelled (-999) or unreachable check is the transient kind')
 upload = owned[owned.index('private func upload(_ appID: Int'):owned.index('// MARK: Before Play')]
 require(upload.index('cloudFile(appID, entry)') < upload.index('.cloudBeginAppUploadBatch'),
         "an upload fetches the cloud's copy of every file it replaces before the batch opens")
