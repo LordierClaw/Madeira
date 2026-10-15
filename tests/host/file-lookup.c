@@ -262,6 +262,10 @@ int main(void)
     assert(a.status == b.status && b.status != STATUS_SUCCESS && a.root == 74 && b.root == 74);
     lookup_root = 73;
     /* No cached result: adding/removing a file is seen by the next lookup. */
+    /* A hint left by an earlier miss below this prefix starts one walk; the
+     * walk's success retires it, so the next request takes the full stat. */
+    a = run(lookup_unix_name, paths[0], 0, FILE_OPEN, 0, 0, 1024);
+    assert(a.status == STATUS_SUCCESS);
     a = run(lookup_unix_name, paths[0], 0, FILE_OPEN, 0, 0, 1024);
     assert(a.status == STATUS_SUCCESS);
     assert(profile_counts.full_hit == 1 && !profile_counts.full_miss && !profile_counts.components);
