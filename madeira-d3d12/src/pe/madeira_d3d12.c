@@ -14770,6 +14770,11 @@ static void STDMETHODCALLTYPE device_CreateShaderResourceView(ID3D12Device *This
  * game using one renders wrongly here); sampler-census = 1 logs every
  * distinct filter value. */
 static int g_smp_red = -1, g_smp_census;
+/* m1-compat: 1 once the device reports Apple9 or newer, 0 when it does not, -1
+ * until the device is created. Metal's reductionMode (mode 3) needs an Apple10
+ * GPU (A19), and Apple10 implies Apple9, so a GPU without Apple9 (an M1 or M2
+ * iPad, A14-A16) cannot take it. */
+static int g_dev_has_apple9 = -1;
 static volatile LONG g_smp_seen[16];   /* filter values 0..0x1ff already logged */
 static const char *const g_cmp_names[8] = { "Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual", "Always" };
 static void mad_sampler_red_load(void) {
@@ -14778,6 +14783,15 @@ static void mad_sampler_red_load(void) {
     v = mad_cfg_int_pe("sampler-reduction", 0);    /* MIN/MAX reduction samplers (GoT Hi-Z culling): 3 = Metal reductionMode (iOS 26, A19 / Apple10; the fix), 1 = point filtering and no comparison, 2 = no comparison only */
     g_smp_census = mad_cfg_int_pe("sampler-census", 0) ? 1 : 0;   /* diagnostic: log every distinct sampler filter value once with its Metal mapping */
     g_smp_red = v >= 1 && v <= 3 ? (int)v : 0;
+    if (g_smp_red == 3 && g_dev_has_apple9 == 0) {
+        /* m1-compat: mode 3 on a GPU without Metal's reductionMode would leave the
+         * min/max samplers as averaging filters (a Hi-Z depth pyramid then reads a
+         * depth that is neither near nor far). Use mode 1, the point-sampling
+         * approximation, which every GPU can do. */
+        d3d12_log("[sampler] sampler-reduction=3 needs Metal reductionMode (Apple10 GPU, iOS 26); "
+                  "this GPU does not report Apple9, so mode 1 (point sampling) is used instead\n");
+        g_smp_red = 1;
+    }
     if (g_smp_red || g_smp_census)
         d3d12_log("[sampler] madeira-bcd sampler-reduction=%d sampler-census=%d\n", g_smp_red, g_smp_census);
 }
@@ -19494,6 +19508,7 @@ __declspec(dllexport) HRESULT WINAPI MadeiraD3D12CreateDevice(IUnknown *adapter,
     obj_handle_t devices = WMTCopyAllDevices();
     d->mtl_device = devices ? NSArray_object(devices, 0) : 0;
     if (d->mtl_device) NSObject_retain(d->mtl_device);   /* take our own reference */
+    if (d->mtl_device) g_dev_has_apple9 = MTLDevice_supportsFamily(d->mtl_device, MAD_MTL_FAMILY_APPLE9) ? 1 : 0;   /* m1-compat: see mad_sampler_red_load */
     if (!d->adapter_luid.LowPart && !d->adapter_luid.HighPart && d->mtl_device) {
         /* No adapter given: DXMT's DXGI derives the LUID from the Metal
          * registry ID (dxgi_adapter.cpp GetAdapterLuid); use the same. */

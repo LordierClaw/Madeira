@@ -747,6 +747,17 @@ int main(void) {
     b = S(0x95, D3D12_COMPARISON_FUNC_LESS); T(((unsigned char *)&b)[offsetof(struct WMTSamplerInfo, support_argument_buffers) + 1] == 0 && b.compare_function == WMTCompareFunctionLess);
     b = S(0x14, 0); T(((unsigned char *)&b)[offsetof(struct WMTSamplerInfo, support_argument_buffers) + 1] == 0 && b.mip_filter == WMTSamplerMipFilterNearest);
     reload(9, 0); a = S(0x195, 0); T(g_smp_red == 0 && a.compare_function == WMTCompareFunctionAlways);   /* out of range: off */
+    /* m1-compat: 3 needs an Apple10 GPU; one without Apple9 (M1) falls back to 1, an Apple9+ or not-yet-probed device keeps 3 */
+    g_dev_has_apple9 = 0; reload(3, 0); g_logs = 0;
+    a = S(0x195, 0); T(g_smp_red == 1 && a.min_filter == WMTSamplerMinMagFilterNearest && a.mip_filter == WMTSamplerMipFilterNearest &&
+                       ((unsigned char *)&a)[offsetof(struct WMTSamplerInfo, support_argument_buffers) + 1] == 0 && a.compare_function == WMTCompareFunctionNever);
+    T(g_logs == 3);   /* the fallback line, the key line, the sampler */
+    g_dev_has_apple9 = 1; reload(3, 0);
+    a = S(0x195, 0); T(g_smp_red == 3 && ((unsigned char *)&a)[offsetof(struct WMTSamplerInfo, support_argument_buffers) + 1] == 0xA2);
+    g_dev_has_apple9 = -1; reload(3, 0);
+    a = S(0x195, 0); T(g_smp_red == 3);
+    g_dev_has_apple9 = 0; reload(1, 0); a = S(0x195, 0); T(g_smp_red == 1);   /* an explicit 1 is untouched */
+    g_dev_has_apple9 = -1;
     /* census: every distinct filter once */
     reload(0, 1); g_logs = 0;
     S(0x15, 0); S(0x15, 0); S(0x95, D3D12_COMPARISON_FUNC_LESS); S(0x00, 0);
