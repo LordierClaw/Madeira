@@ -2535,6 +2535,8 @@ struct ContentView: View {
             if let hold {
                 library.cloudNotice = cloudNotice(appID, name: name, hold: hold)
             } else {
+                // Settled: the start that follows takes it as cleared and does not check again.
+                library.cloudBypass = appID
                 let retry = library.cloudRetry; library.cloudRetry = nil; retry?()
             }
         }

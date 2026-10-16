@@ -877,6 +877,9 @@ final class SteamOwnedLibrary: ObservableObject {
         for _ in 0..<600 where cloudBusy.contains(appID) { try? await Task.sleep(nanoseconds: 200_000_000) }
         cloud[appID]?.problem = nil      // a transfer that stops again says so again
         await syncCloud(appID)
+        // This was the one retry a network failure gets: Play after it must not see
+        // `stale` again and sync again (build 36 looped between the two forever).
+        cloud[appID]?.transientFailure = false
         let hold = cloudHold(appID, retryTransient: false)
         SteamLog.event("[steam-cloud] app=\(appID) before-play sync result=\(hold.map { "\($0)" } ?? "clear")")
         return hold == .stale ? nil : hold

@@ -44,6 +44,15 @@ require(hold.index('if retryTransient && state.transientFailure { return .stale 
         < hold.index('if keepsLocalCloudSaves(appID) {') < hold.index('return .unchecked(message)')
         and hold.count('if keepsLocalCloudSaves(appID) {') == 2,
         'with Always keep local, a check or transfer that failed starts the game without asking (after one retry)')
+settle = owned[owned.index('func settleCloud(_ appID: Int)'):owned.index('// MARK: Upload and quit')]
+require(settle.index('await syncCloud(appID)') < settle.index('cloud[appID]?.transientFailure = false')
+        < settle.index('cloudHold(appID, retryTransient: false)'),
+        'a network failure gets one retry: after it, Play does not take the check as stale again')
+content = (root / 'app/Madeira/ContentView.swift').read_text()
+wait = content[content.index('private func cloudWait(_ appID: Int)'):]
+wait = wait[:wait.index('\n    }\n')]
+require(wait.index('library.cloudBypass = appID') < wait.index('retry?()'),
+        'a settled sync starts the game without checking again (no check, sync, check loop)')
 require('case .cancelled, .timedOut' in owned and 'state.transientFailure = Self.transientFailure(error)' in owned,
         'a cancelled (-999) or unreachable check is the transient kind')
 upload = owned[owned.index('private func upload(_ appID: Int'):owned.index('// MARK: Before Play')]
