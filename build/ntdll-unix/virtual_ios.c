@@ -7261,8 +7261,20 @@ int ios_jit_patch_x18(char *text_rw, char *text_rx, size_t text_size,
              * thread is preempted in that window, x18 comes back zero and the
              * original instruction faults on the zero page, which the handler
              * already recovers. A rare recoverable fault beats the certain
-             * SP-align kill this replaces. */
-            if (tramp_off + 20 > tramp_size)
+             * SP-align kill this replaces.
+             *
+             * Madeira: a STORE of x18 (opengl32's `.teb = NtCurrentTeb()`,
+             * X18_ROLE_RT) does not fault when x18 comes back zero: it writes
+             * NULL as the TEB, and the unix thunk then reads teb->glTable at
+             * 0x1238 (Darkest Dungeon, build 34: ext_glMapBufferRange right
+             * after the app returned from the background, the game died). Such
+             * a store is followed by
+             *   cbz x18, <the mrs above>
+             * so a store made after x18 was zeroed is made again with the TEB.
+             * Storing the same value to the same address twice is harmless (the
+             * base register is never x18 for this role). */
+            size_t x18_start = tramp_off;
+            if (tramp_off + (role == X18_ROLE_RT ? 24 : 20) > tramp_size)
             {
                 ERR("x18 patcher: out of trampoline space at %d patches\n", count);
                 break;
@@ -7275,6 +7287,12 @@ int ios_jit_patch_x18(char *text_rw, char *text_rx, size_t text_size,
             tramp_off += 4;
             *(uint32_t *)(tramp_rw + tramp_off) = insn;
             tramp_off += 4;
+            if (role == X18_ROLE_RT)
+            {
+                int32_t back = (int32_t)x18_start - (int32_t)tramp_off;   /* bytes, negative */
+                *(uint32_t *)(tramp_rw + tramp_off) = 0xB4000000 | ((((uint32_t)back >> 2) & 0x7FFFF) << 5) | 18;
+                tramp_off += 4;
+            }
             x18_scratch++;
         }
 

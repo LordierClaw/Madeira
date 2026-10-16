@@ -103,6 +103,14 @@ assert '0xD53BD060 | arith_rd' in block and '0x927DF000 | (arith_rd << 5) | arit
 assert '0xF9400000 | ((slot_off / 8) << 10) | (arith_rd << 5) | arith_rd' in block
 assert 'ios_insn_replace_x18(insn, role, arith_rd)' in block and 'tramp_off + 20 > tramp_size' in block
 print('PASS: the patcher emits the destination form for ADD/SUB before the via-x18 fallback')
+via = patcher[patcher.index('Use x18 itself.'):patcher.index('/* Branch back to return address */')]
+assert 'if (role == X18_ROLE_RT)' in via and '0xB4000000 |' in via and '| 18;' in via
+assert via.index('*(uint32_t *)(tramp_rw + tramp_off) = insn;') < via.index('0xB4000000 |')
+assert "tramp_off + (role == X18_ROLE_RT ? 24 : 20) > tramp_size" in via
+back = -16  # cbz x18 four words back to the trampoline's mrs
+enc = 0xB4000000 | ((((back & 0xffffffff) >> 2) & 0x7FFFF) << 5) | 18
+assert enc == 0xB4FFFF92, hex(enc)
+print('PASS: an x18 store (opengl32 TEB) re-runs when x18 was zeroed before it (cbz x18 back to the mrs)')
 
 with tempfile.TemporaryDirectory(prefix='madeira-x18-arith-') as directory:
     folder = Path(directory)
