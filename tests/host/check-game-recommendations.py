@@ -65,9 +65,9 @@ for m in re.finditer(r'static let (\w+) = GameRecommendation\(\n\s*id: "([^"]+)"
     lines = [line[len(indent):] if line.startswith(indent) else line for line in body.split('\n')]
     presets[ident] = dict(name=name, title=title, version=int(version), lines=lines, switches=' '.join((switches or '').split()))
 assert set(presets) == {'rdr2-steam', 'rdr2-other', 'gta5e-steam', 'gta5e-other', 'ghost-of-tsushima', 'god-of-war',
-                        'horizon-zero-dawn', 'standard'}, sorted(presets)
+                        'horizon-zero-dawn', 'darkest-dungeon', 'standard'}, sorted(presets)
 assert ('static let all = [rdr2Steam, rdr2Other, gta5EnhancedSteam, gta5EnhancedOther, ghostOfTsushima, godOfWar, horizonZeroDawn,\n'
-        '                      standard]') in lists_src
+        '                      darkestDungeon, standard]') in lists_src
 
 # madeira-bcd's defaults where upstream's differ: every game madeira-bcd ran had them,
 # so every game's own list ends with them. The standard list reaches every other game
@@ -75,9 +75,10 @@ assert ('static let all = [rdr2Steam, rdr2Other, gta5EnhancedSteam, gta5Enhanced
 FORK_DEFAULTS = ["# madeira-bcd's defaults, which this list was tested with (upstream's differ).",
                  'env.MADEIRA_FREE_DELAY_MS = 2000', 'env.MADEIRA_CTX_CPU_AREA = 2', 'env.MADEIRA_WAIT_CHILDREN = 1',
                  'env.MADEIRA_JIT_DUMP = 0']
+# This fork's Darkest Dungeon list was not run with madeira-bcd's defaults, so it has none.
 for ident, p in presets.items():
-    if ident == 'standard':
-        assert not set(FORK_DEFAULTS) & set(p['lines']), (ident, "the standard list has none of madeira-bcd's defaults")
+    if ident in ('standard', 'darkest-dungeon'):
+        assert not set(FORK_DEFAULTS) & set(p['lines']), (ident, "this list has none of madeira-bcd's defaults")
         p['tested'], p['fork'] = p['lines'][2:], []
         continue
     assert p['lines'][-len(FORK_DEFAULTS):] == FORK_DEFAULTS, (ident, "the list ends with madeira-bcd's defaults")
@@ -105,7 +106,7 @@ for ident, p in presets.items():
         if key != 'env.WINEDLLOVERRIDES':
             named = named.replace('socialclubhelper.exe', '')
         assert 'socialclub' not in named and 'MADEIRA_DLL_LOCAL' not in line, (ident, line)
-print('PASS: eight lists, two comment lines each, every game list ends with the four fork defaults and the standard one has none, no key twice, '
+print('PASS: nine lists, two comment lines each, every game list ends with the four fork defaults and the standard one has none, no key twice, '
       'every non-env key in the settings catalog, no Social Club DLL lines, no variant DLL switches')
 
 # Red Dead Redemption 2 from Steam: the owner's list of 2026-10-09 (build 463), line for line,
@@ -241,7 +242,7 @@ assert hzd['tested'] == ['dxbc-register-spaces = 1', 'msc-unbounded-retry = 1', 
                             'env.MADEIRA_LOCK_ORPHAN = stamped', 'env.MADEIRA_SRV_FGETPATH = 1',
                             'env.WINEDEBUG = fixme-input'], hzd['lines']
 assert not any(line.startswith(('quiet-log', 'env.MADEIRA_SRV_FGETPATH'))
-               for p in presets.values() if p is not hzd for line in p['lines']), 'the build 494 switches are Horizon Zero Dawn\'s only'
+               for p in presets.values() if p is not hzd and p is not presets['darkest-dungeon'] for line in p['lines']), 'the build 494 switches are Horizon Zero Dawn\'s only'
 assert hzd['version'] == 16 and hzd['switches'] == 'avx: false, nvidia: false, wineVCRT: false, fastSync: true, display: "fit"', hzd
 assert not any(line.startswith(('d3d12-wave-ops', 'd3d12-raw-typed-views', 'typed-uav-atomic', 'ignore-volatile-metadata',
                                  'env.FEX_MEMCPYSETTSOENABLED', 'env.FEX_STRICTINPROCESSSPLITLOCKS'))
@@ -278,6 +279,22 @@ assert 'installFolder == "ghost of tsushima director\'s cut"' in match and 'inst
 assert 'case "playgtav.exe", "gta5_enhanced.exe":' in match and 'return inSteam ? gta5EnhancedSteam : gta5EnhancedOther' in match
 assert 'return inSteam ? rdr2Steam : rdr2Other' in match
 assert 'guard fileExists(folder + "\\\\GTA5_Enhanced.exe") else { return nil }' in match and 'default:\n            return nil' in match
+
+# Darkest Dungeon (this fork, 2026-10-16): the standard [ec-hook] line, the server's one-call
+# file names, and upstream's five default-on JIT shortcuts of 2026-10-12 off; no switches.
+dd = presets['darkest-dungeon']
+assert dd['version'] == 1 and not dd['switches'], dd
+assert dd['tested'] == ['env.MADEIRA_EC_HOOK_TRACE = 0', 'env.MADEIRA_SRV_FGETPATH = 1',
+                        'env.MADEIRA_FEX_CALLRET_ELIDE = 0', 'env.MADEIRA_FEX_EC_BITMAP_CACHE = 0',
+                        'env.MADEIRA_FEX_EC_EXIT_LEAN = 0', 'env.MADEIRA_FEX_EC_RET = 0',
+                        'env.MADEIRA_FEX_EC_RET_DIRECT = 0'], dd['tested']
+for line in dd['tested'][1:]:
+    assert line.split(' = ')[0] in catalog_keys, ('a switch Madeira reads', line)
+assert 'horizonZeroDawnAppID = 1151640, darkestDungeonAppID = 262060' in lists_src
+assert 'if steamAppID == darkestDungeonAppID || installFolder == "darkestdungeon" { return darkestDungeon }' in match
+assert 'case "darkest.exe":\n            return darkestDungeon' in match
+print('PASS: Darkest Dungeon (v1): Steam App ID 262060, its Steam folder or Darkest.exe; one-call server file names, '
+      'upstream\'s default-on JIT shortcuts off, no madeira-bcd defaults')
 
 # Where the app applies them.
 save = block(library, '    func save(_ entry: LibraryEntry) {', '\n    }\n')
@@ -438,6 +455,9 @@ check(id(steam + #"\GodOfWar"#) == "god-of-war" && id("D:\\SteamLibrary\\steamap
       "GoW by its Steam folder")
 check(id(steam + #"\Horizon Zero Dawn"#) == "horizon-zero-dawn", "Horizon Zero Dawn by its Steam folder")
 check(id(steam + #"\Horizon Zero Dawn Remastered"#) == "none", "the remaster's Steam folder is another game")
+check(id(steam + #"\DarkestDungeon"#, 262060) == "darkest-dungeon" && id(steam + #"\DarkestDungeon"#) == "darkest-dungeon",
+      "Darkest Dungeon by its App ID and its Steam folder")
+check(id(steam + #"\DarkestDungeon\_windows\win64\Darkest.exe"#) == "darkest-dungeon", "Darkest Dungeon by its program")
 check(id(steam + #"\Ghost"#, 1, files: [steam + #"\Ghost\GhostOfTsushima.exe"#]) == "none", "a library Steam game is its App ID or folder name")
 check(id(#"C:\God of War\GoW.exe"#) == "god-of-war", "GoW by its program")
 check(id(steam + #"\God of War"#, 1593500) == "god-of-war", "GoW from Steam")

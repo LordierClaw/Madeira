@@ -37,9 +37,13 @@ require('SteamSignIn.flag("MADEIRA_STEAM_CLOUD", default: true)' in owned,
 require('guard let state = cloud[appID] else { return .stale }' in owned,
         'Play on a game not checked yet in this app run syncs it first, without asking')
 hold = owned[owned.index('func cloudHold(_ appID: Int'):owned.index('// MARK: Upload and quit')]
-require('return retryTransient && state.transientFailure ? .stale : .unchecked(message)' in hold
+require('if retryTransient && state.transientFailure { return .stale }' in hold
         and 'cloudHold(appID, retryTransient: false)' in hold,
-        'a check that failed only on the network is repeated once at Play; a second failure asks')
+        'a check that failed only on the network is repeated once at Play; a second failure asks (unless Always keep local)')
+require(hold.index('if retryTransient && state.transientFailure { return .stale }')
+        < hold.index('if keepsLocalCloudSaves(appID) {') < hold.index('return .unchecked(message)')
+        and hold.count('if keepsLocalCloudSaves(appID) {') == 2,
+        'with Always keep local, a check or transfer that failed starts the game without asking (after one retry)')
 require('case .cancelled, .timedOut' in owned and 'state.transientFailure = Self.transientFailure(error)' in owned,
         'a cancelled (-999) or unreachable check is the transient kind')
 upload = owned[owned.index('private func upload(_ appID: Int'):owned.index('// MARK: Before Play')]

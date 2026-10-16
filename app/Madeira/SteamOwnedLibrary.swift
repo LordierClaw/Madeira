@@ -847,10 +847,24 @@ final class SteamOwnedLibrary: ObservableObject {
         // No prefix yet (first start): there is nothing to compare with.
         case .failed(let message):
             if message == Self.cloudNoFolders { return nil }
-            return retryTransient && state.transientFailure ? .stale : .unchecked(message)
+            if retryTransient && state.transientFailure { return .stale }
+            // "Always keep local": this device's saves win whatever the cloud holds,
+            // so a check that could not run is no reason to ask; the next sync
+            // uploads them.
+            if keepsLocalCloudSaves(appID) {
+                SteamLog.event("[steam-cloud] app=\(appID) before-play: unchecked, kept local without asking")
+                return nil
+            }
+            return .unchecked(message)
         case .ready: break
         }
-        if let problem = state.problem { return .unchecked(problem) }
+        if let problem = state.problem {
+            if keepsLocalCloudSaves(appID) {
+                SteamLog.event("[steam-cloud] app=\(appID) before-play: transfer stopped, kept local without asking")
+                return nil
+            }
+            return .unchecked(problem)
+        }
         if !state.conflicts.isEmpty { return .conflict(state.conflicts.count) }
         if Date().timeIntervalSince(state.checked ?? .distantPast) > Self.cloudFresh { return .stale }
         return nil
