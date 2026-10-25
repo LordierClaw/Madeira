@@ -283,17 +283,19 @@ assert 'guard fileExists(folder + "\\\\GTA5_Enhanced.exe") else { return nil }' 
 # Darkest Dungeon (this fork, 2026-10-16): the standard [ec-hook] line, the server's one-call
 # file names, and upstream's five default-on JIT shortcuts of 2026-10-12 off; no switches.
 dd = presets['darkest-dungeon']
-assert dd['version'] == 1 and not dd['switches'], dd
+# Version 2 (2026-10-25): the swap tier in broad coverage after the build 37 jetsam kill.
+assert dd['version'] == 2 and not dd['switches'], dd
 assert dd['tested'] == ['env.MADEIRA_EC_HOOK_TRACE = 0', 'env.MADEIRA_SRV_FGETPATH = 1',
                         'env.MADEIRA_FEX_CALLRET_ELIDE = 0', 'env.MADEIRA_FEX_EC_BITMAP_CACHE = 0',
                         'env.MADEIRA_FEX_EC_EXIT_LEAN = 0', 'env.MADEIRA_FEX_EC_RET = 0',
-                        'env.MADEIRA_FEX_EC_RET_DIRECT = 0'], dd['tested']
+                        'env.MADEIRA_FEX_EC_RET_DIRECT = 0', 'swap-mb = 3072', 'swap-mode = 2',
+                        'swap-min-mb = 1'], dd['tested']
 for line in dd['tested'][1:]:
     assert line.split(' = ')[0] in catalog_keys, ('a switch Madeira reads', line)
 assert 'horizonZeroDawnAppID = 1151640, darkestDungeonAppID = 262060' in lists_src
 assert 'if steamAppID == darkestDungeonAppID || installFolder == "darkestdungeon" { return darkestDungeon }' in match
 assert 'case "darkest.exe":\n            return darkestDungeon' in match
-print('PASS: Darkest Dungeon (v1): Steam App ID 262060, its Steam folder or Darkest.exe; one-call server file names, '
+print('PASS: Darkest Dungeon (v2): Steam App ID 262060, its Steam folder or Darkest.exe; one-call server file names, '
       'upstream\'s default-on JIT shortcuts off, no madeira-bcd defaults')
 
 # Where the app applies them.

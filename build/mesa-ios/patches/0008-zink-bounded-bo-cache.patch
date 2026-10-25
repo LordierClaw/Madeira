@@ -1,0 +1,36 @@
+--- a/src/gallium/drivers/zink/zink_bo.c
++++ b/src/gallium/drivers/zink/zink_bo.c
+@@ -33,6 +33,7 @@
+ #include "zink_bo.h"
+ #include "zink_resource.h"
+ #include "zink_screen.h"
++#include <stdlib.h> /* Madeira: getenv, strtoull */
+ #include "util/u_hash_table.h"
+ 
+ #ifdef HAVE_LIBDRM
+@@ -1340,10 +1341,24 @@
+    uint64_t total_mem = 0;
+    for (uint32_t i = 0; i < screen->info.mem_props.memoryHeapCount; ++i)
+       total_mem += screen->info.mem_props.memoryHeaps[i].size;
++   /* Madeira: MoltenVK on a unified-memory iPhone reports all of RAM as the
++    * device heap, so total_mem / 8 let freed buffers and images wait in this
++    * cache up to ~700 MB on a 6 GB phone. The cache is charged to the app's
++    * footprint like live memory, and iOS kills the app at its footprint limit
++    * (Darkest Dungeon, 4073 MB, 2026-10-24). Cap it at MADEIRA_ZINK_BO_CACHE_MB
++    * (default 128; 0 disables caching of whole BOs).
++    */
++   uint64_t cache_max = total_mem / 8;
++   {
++      const char *e = getenv("MADEIRA_ZINK_BO_CACHE_MB");
++      uint64_t cap = (uint64_t)(e && *e ? strtoull(e, NULL, 10) : 128) << 20;
++      if (cap < cache_max)
++         cache_max = cap;
++   }
+    /* Create managers. */
+    pb_cache_init(&screen->pb.bo_cache, screen->info.mem_props.memoryTypeCount,
+                  500000, 2.0f, 0,
+-                 total_mem / 8, offsetof(struct zink_bo, cache_entry), screen,
++                 cache_max, offsetof(struct zink_bo, cache_entry), screen,
+                  (void*)bo_destroy, (void*)bo_can_reclaim);
+ 
+    unsigned min_slab_order = MIN_SLAB_ORDER;  /* 256 bytes */

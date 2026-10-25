@@ -27,7 +27,7 @@ Development continued on `ui-ux` until 2026-10-12, when `madeira-fixes` was
 fast-forwarded to it and `ui-ux` was deleted. Both repositories now develop on
 `madeira-fixes`.
 
-## Upstream sync, 2026-10-25
+## Upstream sync and Darkest Dungeon memory kill, 2026-10-25
 
 Merged willfaust/Madeira through `e3a88fd` (98 commits: thin reservations,
 per-process keyed events, KUSER register fix, wineserver ARM64 alignment,
@@ -39,6 +39,21 @@ decommit bounds; only licensed DLC depots install (now with upstream's download
 language); Steam Cloud keeps "Always keep local"; click/key pacing
 (`MadeiraClickQueue.h`) now runs inside upstream's serial input drain, which
 also paces pasted text. Upstream's audio slice code replaced ours.
+
+Build 37 "crashed" 21 minutes into Darkest Dungeon: no exception, the log just
+stops. `[xp] fpMB` reached 4073 MB against a 4075 MB limit, so iOS killed the
+app (jetsam). The VM region walk stayed at ~2.2 GB dirty from minute 2 on;
+the rest of the footprint (~1.8 GB, growing at each area change) is GPU memory
+from Zink/MoltenVK, which no region shows. Changes:
+- Darkest Dungeon's list (version 2) turns on the swap tier in broad coverage
+  (`swap-mb = 3072`, `swap-mode = 2`, `swap-min-mb = 1`), as Horizon Zero
+  Dawn's and RDR2's lists do: file-backed game memory is not charged to the
+  footprint.
+- Mesa patch `0008-zink-bounded-bo-cache.patch` caps Zink's cache of freed
+  buffers and images at 128 MB (`MADEIRA_ZINK_BO_CACHE_MB`); it was RAM / 8,
+  ~700 MB on a 6 GB iPhone.
+- `[footprint-gpu]` log line: Metal/graphics, IOKit, page tables and the bytes
+  left before the jetsam limit, next to each `[footprint]` line.
 
 ## Upstream integration, 2026-10-10
 

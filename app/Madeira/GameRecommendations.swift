@@ -528,8 +528,14 @@ enum GameRecommendations {
     /// menu reading a pointer overwritten with text (20:53:22, 2026-10-16) with
     /// them on. That is a suspicion, not a proven cause; the list keeps the game
     /// on the code paths it ran on before.
+    /// Version 2 (2026-10-25): the swap tier in broad coverage, as Horizon Zero
+    /// Dawn's and Red Dead Redemption 2's lists have it. Build 37 was killed by
+    /// iOS 21 minutes into a run at 4073 MB footprint (the limit, 4075 MB): the
+    /// game's own memory (~1.25 GB resident, ~0.95 GB compressed) and Zink's
+    /// GPU memory (~1.8 GB) together. File-backed game memory is not charged
+    /// to the footprint, so the GPU side keeps its room.
     static let darkestDungeon = GameRecommendation(
-        id: "darkest-dungeon", title: "Darkest Dungeon", version: 1,
+        id: "darkest-dungeon", title: "Darkest Dungeon", version: 2,
         config: """
         # Madeira's recommended settings for Darkest Dungeon (Steam).
         # Reset to Recommended, at the bottom of the game's settings, brings them back.
@@ -540,6 +546,9 @@ enum GameRecommendations {
         env.MADEIRA_FEX_EC_EXIT_LEAN = 0
         env.MADEIRA_FEX_EC_RET = 0
         env.MADEIRA_FEX_EC_RET_DIRECT = 0
+        swap-mb = 3072
+        swap-mode = 2
+        swap-min-mb = 1
         """)
 
     /// Every other game, and the Desktop (owner's decisions, 2026-10-12): most games
