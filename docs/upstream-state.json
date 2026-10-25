@@ -1,9 +1,9 @@
 {
-  "updated": "2026-10-15",
+  "updated": "2026-10-25",
   "branch": "madeira-fixes",
   "origin": "https://github.com/LordierClaw/Madeira",
   "integrated": {
-    "willfaust/Madeira": "279fd0f83170425db002fe25d6bd62f6355f497d",
+    "willfaust/Madeira": "e3a88fddb8daed1f5ac28a45dcb4663d65192629",
     "c-gow/Madeira": "e7113515c455a48df5fa5bcce4ebfdeaaf04f152",
     "willfaust/wine": "9129e9684daaeae70da9435e7c6060e59392634e"
   },

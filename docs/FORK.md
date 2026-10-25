@@ -27,6 +27,19 @@ Development continued on `ui-ux` until 2026-10-12, when `madeira-fixes` was
 fast-forwarded to it and `ui-ux` was deleted. Both repositories now develop on
 `madeira-fixes`.
 
+## Upstream sync, 2026-10-25
+
+Merged willfaust/Madeira through `e3a88fd` (98 commits: thin reservations,
+per-process keyed events, KUSER register fix, wineserver ARM64 alignment,
+library grid, gesture zones, clipboard paste, Steam download language,
+Steam Cloud off switch and remotecache.vdf, audio slice period). willfaust/wine
+`madeira-lgpl` and c-gow `main` had nothing new. Fork choices kept where both
+sides changed the same code: thin reservations stay opt-in with our locking and
+decommit bounds; only licensed DLC depots install (now with upstream's download
+language); Steam Cloud keeps "Always keep local"; click/key pacing
+(`MadeiraClickQueue.h`) now runs inside upstream's serial input drain, which
+also paces pasted text. Upstream's audio slice code replaced ours.
+
 ## Upstream integration, 2026-10-10
 
 `ui-ux` merges `willfaust/Madeira` main at `48f976429c189f8396e23d251d8a82f43c705922`.

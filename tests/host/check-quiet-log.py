@@ -25,7 +25,8 @@ Checks:
     host with a stand-in fcntl, behaves that way; the session end clears the
     switch and unsets it so a later game of the same app run does not inherit it;
   - the catalog documents both switches; Horizon Zero Dawn's list (version 16)
-    sets both and no other game's list does.
+    sets both, this fork's Darkest Dungeon list sets only the server switch,
+    and no other game's list does.
 """
 from pathlib import Path
 import os
@@ -193,6 +194,12 @@ if m:
     check(re.search(r"^\s*env\.MADEIRA_SRV_FGETPATH = 1$", cfg, re.M) is not None,
           "Horizon Zero Dawn's list sets env.MADEIRA_SRV_FGETPATH = 1")
 others = rec.replace(m.group(0), "") if m else rec
+# This fork's Darkest Dungeon list also names opened files with F_GETPATH
+# (its loader opens thousands of files); it leaves quiet-log alone.
+dd = re.search(r'static let darkestDungeon = GameRecommendation\(.*?config: """(.*?)"""', others, re.S)
+check(bool(dd) and re.search(r"^\s*env\.MADEIRA_SRV_FGETPATH = 1$", dd.group(1), re.M) is not None
+      and "quiet-log" not in dd.group(1), "Darkest Dungeon's list sets env.MADEIRA_SRV_FGETPATH = 1 only")
+if dd: others = others.replace(dd.group(0), "")
 check("quiet-log" not in re.sub(r"///.*", "", others) and "MADEIRA_SRV_FGETPATH" not in re.sub(r"///.*", "", others),
       "no other game's list sets either switch")
 

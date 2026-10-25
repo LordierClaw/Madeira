@@ -83,12 +83,9 @@ int main( void )
     expect( 0xAA1203E8, -1, 0, "mov x8, x18" );
     expect( 0x91002128, -1, 0, "add x8, x9, #8 (no x18)" );
     /* opengl32's TEB stores (fork): role RT only when stores are patched, never arithmetic */
-    if (ios_insn_x18_role( 0xF9000BF2, 0 ) != X18_ROLE_NONE) FAIL("str x18, [sp, #16] patched without stores
-");
-    if (ios_insn_x18_role( 0xF9000BF2, 1 ) != X18_ROLE_RT) FAIL("str x18, [sp, #16] not a store role
-");
-    if (ios_x18_arith_dest( 0xF9000BF2, X18_ROLE_RT ) != -1) FAIL("str x18 taken as arithmetic
-");
+    if (ios_insn_x18_role( 0xF9000BF2, 0 ) != X18_ROLE_NONE) FAIL("str x18, [sp, #16] patched without stores\n");
+    if (ios_insn_x18_role( 0xF9000BF2, 1 ) != X18_ROLE_RT) FAIL("str x18, [sp, #16] not a store role\n");
+    if (ios_x18_arith_dest( 0xF9000BF2, X18_ROLE_RT ) != -1) FAIL("str x18 taken as arithmetic\n");
     puts( "PASS: ADD/SUB off x18 with a free destination use it; the rest keep their forms" );
     return 0;
 }
