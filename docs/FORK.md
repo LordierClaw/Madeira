@@ -52,7 +52,7 @@ from Zink/MoltenVK, which no region shows. Changes:
 - Mesa patch `0008-zink-bounded-bo-cache.patch` caps Zink's cache of freed
   buffers and images at 128 MB (`MADEIRA_ZINK_BO_CACHE_MB`); it was RAM / 8,
   ~700 MB on a 6 GB iPhone.
-- `[footprint-gpu]` log line: Metal/graphics, IOKit, page tables and the bytes
+- `[footprint-gpu]` log line: Metal/graphics, media, neural and the bytes
   left before the jetsam limit, next to each `[footprint]` line.
 
 ## Upstream integration, 2026-10-10

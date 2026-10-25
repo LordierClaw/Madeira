@@ -1298,18 +1298,16 @@ static void *ios_pool_warmer_thread( void *arg )
                      * Darkest Dungeon (build 37, 2026-10-24) was killed at 4073 MB
                      * while the region walk stayed at ~2.2 GB dirty: the rest is
                      * GPU memory (Zink -> MoltenVK -> Metal) and kernel ledgers.
-                     * graphics = Metal/IOSurface charged to us, iokit = IOKit
-                     * mappings, left = bytes until the jetsam limit. */
+                     * graphics = Metal/IOSurface charged to us, left = bytes
+                     * until the jetsam limit. */
                     if (vmi_cnt * sizeof(natural_t) >= offsetof( task_vm_info_data_t, limit_bytes_remaining ) + sizeof(vmi.limit_bytes_remaining))
                         dprintf(2, "[footprint-gpu] graphics=%llu MB (+%llu compressed) media=%llu MB neural=%llu MB "
-                                "purgeable-nonvolatile=%llu MB iokit=%llu MB page-tables=%llu MB left=%llu MB (cycle=%u)\n",
+                                "purgeable-nonvolatile=%llu MB left=%llu MB (cycle=%u)\n",
                                 (unsigned long long)vmi.ledger_tag_graphics_footprint >> 20,
                                 (unsigned long long)vmi.ledger_tag_graphics_footprint_compressed >> 20,
                                 (unsigned long long)vmi.ledger_tag_media_footprint >> 20,
                                 (unsigned long long)vmi.ledger_tag_neural_footprint >> 20,
                                 (unsigned long long)vmi.ledger_purgeable_nonvolatile >> 20,
-                                (unsigned long long)vmi.iokit_mapped >> 20,
-                                (unsigned long long)vmi.page_table >> 20,
                                 (unsigned long long)vmi.limit_bytes_remaining >> 20, cycle);
                 }
             }
